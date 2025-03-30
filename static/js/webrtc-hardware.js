@@ -183,24 +183,41 @@ function initSpeechRecognition() {
         
         document.getElementById('voiceStatus').textContent = `Heard: "${transcript}"`;
         
-        // Check for wake word
-        if (!wakeWordDetected && lowerTranscript.includes(WAKE_WORD)) {
-            wakeWordDetected = true;
-            playActivationSound();
-            document.getElementById('voiceStatus').textContent = 'Wake word detected! Listening for command...';
-            
-            // Extract command after wake word if it exists in the same utterance
-            const command = extractCommandAfterWakeWord(lowerTranscript);
-            if (command && command.length > 1) {
-                processCommand(command);
-                resetWakeWordState();
+        // Always process command, with or without wake word
+        if (event.results[event.results.length - 1].isFinal) {
+            // First check if it has wake word
+            if (lowerTranscript.includes(WAKE_WORD)) {
+                wakeWordDetected = true;
+                playActivationSound();
+                document.getElementById('voiceStatus').textContent = 'Wake word detected! Processing command...';
+                
+                // Extract command after wake word if it exists
+                const command = extractCommandAfterWakeWord(lowerTranscript);
+                if (command && command.length > 1) {
+                    processCommand(command);
+                }
+            } 
+            // Even without wake word, check if it's a direct screenshot or clipboard command
+            else if (
+                lowerTranscript.includes('screenshot') || 
+                lowerTranscript.includes('screen shot') ||
+                lowerTranscript.includes('take picture') ||
+                lowerTranscript.includes('clipboard') || 
+                lowerTranscript.includes('sense clipboard') ||
+                lowerTranscript.includes('copy text')
+            ) {
+                document.getElementById('voiceStatus').textContent = `Executing: "${lowerTranscript}"`;
+                processCommand(lowerTranscript);
             }
-        } 
-        // Process command if wake word was already detected
-        else if (wakeWordDetected && event.results[event.results.length - 1].isFinal) {
-            const command = lowerTranscript.trim();
-            processCommand(command);
-            resetWakeWordState();
+            // Handle just heard "screenshot" or "clipboard"
+            else if (lowerTranscript.trim() === 'screenshot') {
+                document.getElementById('voiceStatus').textContent = 'Taking screenshot...';
+                takeScreenshotFromBrowser();
+            }
+            else if (lowerTranscript.trim() === 'clipboard') {
+                document.getElementById('voiceStatus').textContent = 'Sensing clipboard...';
+                senseClipboardFromBrowser();
+            }
         }
     };
 }
@@ -367,14 +384,37 @@ function processCommand(command) {
     console.log('Processing command:', command);
     document.getElementById('voiceStatus').textContent = `Executing: "${command}"`;
     
-    // Map common voice commands to functions
-    if (command.includes('take') && command.includes('screenshot')) {
+    // Map common voice commands to functions - allow for various natural language ways to express the same command
+    
+    // Screenshot commands
+    if (
+        (command.includes('take') && command.includes('screenshot')) ||
+        (command.includes('capture') && command.includes('screen')) ||
+        (command.includes('screen') && command.includes('shot')) ||
+        (command.includes('take') && command.includes('picture')) ||
+        command.trim() === 'screenshot'
+    ) {
         takeScreenshotFromBrowser();
+        return; // Stop processing after executing the command
     } 
-    else if (command.includes('sense') && command.includes('clipboard')) {
+    
+    // Clipboard sensing commands
+    else if (
+        (command.includes('sense') && command.includes('clipboard')) ||
+        (command.includes('get') && command.includes('clipboard')) ||
+        (command.includes('check') && command.includes('clipboard')) ||
+        (command.includes('clipboard') && command.includes('content')) ||
+        command.trim() === 'clipboard'
+    ) {
         senseClipboardFromBrowser();
+        return; // Stop processing after executing the command
     } 
-    else if ((command.includes('show') || command.includes('open')) && command.includes('screenshot')) {
+    
+    // Show/open screenshot commands
+    else if (
+        ((command.includes('show') || command.includes('open') || command.includes('view')) && command.includes('screenshot')) ||
+        ((command.includes('display') || command.includes('see')) && command.includes('last') && command.includes('screen'))
+    ) {
         // For open last screenshot, we'll use the server endpoint
         fetch('/command', {
             method: 'POST',
@@ -395,8 +435,16 @@ function processCommand(command) {
         .catch(error => {
             console.error('Error executing command:', error);
         });
+        return; // Stop processing after executing the command
     }
-    else if (command.includes('read') && command.includes('clipboard')) {
+    
+    // Read clipboard commands
+    else if (
+        (command.includes('read') && command.includes('clipboard')) ||
+        (command.includes('say') && command.includes('clipboard')) ||
+        (command.includes('tell') && command.includes('clipboard')) ||
+        (command.includes('speak') && command.includes('clipboard'))
+    ) {
         // For read clipboard, we'll use the server endpoint
         fetch('/command', {
             method: 'POST',
@@ -417,6 +465,7 @@ function processCommand(command) {
         .catch(error => {
             console.error('Error executing command:', error);
         });
+        return; // Stop processing after executing the command
     }
     else if ((command.includes('what') && command.includes('do')) || 
              (command.includes('help'))) {
@@ -615,6 +664,47 @@ function playActivationSound() {
 }
 
 /**
+ * Generate QR code for content access
+ * @param {string} filepath - The path to the file
+ * @param {string} contentType - The type of content ('image', 'text', etc.)
+ */
+function generateQRCodeForContent(filepath, contentType = 'text') {
+    // Determine endpoint based on content type
+    const endpoint = contentType === 'image' ? 'qr/screenshot' : 'qr/clipboard';
+    
+    // Extract filename from filepath
+    const filename = filepath.split('/').pop();
+    
+    // Build URL for QR code
+    const qrUrl = `/${endpoint}/${encodeURIComponent(filename)}`;
+    
+    // Determine download URL
+    const downloadEndpoint = contentType === 'image' ? 'screenshot' : 'clipboard';
+    const downloadUrl = `/${downloadEndpoint}/${encodeURIComponent(filename)}`;
+    
+    // Create a popup notification with QR code and download link
+    const popupContent = `
+        <div class="text-center mb-2">
+            <p>Scan QR code to access content on mobile</p>
+            <img src="${qrUrl}" alt="QR Code" class="img-fluid" style="max-width: 150px;">
+        </div>
+        <div class="d-grid gap-2">
+            <a href="${qrUrl}" target="_blank" class="btn btn-sm btn-primary">
+                <i class="fas fa-qrcode"></i> View QR Code
+            </a>
+            <a href="${downloadUrl}" target="_blank" class="btn btn-sm btn-secondary">
+                <i class="fas fa-download"></i> Download Content
+            </a>
+        </div>
+    `;
+    
+    // Show notification with QR code
+    if (typeof showNotification === 'function') {
+        showNotification('info', popupContent, 10000); // Show for 10 seconds
+    }
+}
+
+/**
  * Update the microphone status indicator
  */
 function updateMicrophoneStatus(available) {
@@ -654,76 +744,109 @@ function reconnectMicrophone() {
         reconnectBtn.disabled = true;
     }
     
-    // Try to request microphone access
-    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
-        .then(stream => {
-            // Microphone is available
-            stream.getTracks().forEach(track => track.stop()); // Stop the stream
-            updateMicrophoneStatus(true);
-            reconnectAttempts = 0;
-            
-            if (recognitionActive) {
-                // Restart voice recognition
-                try {
-                    if (recognition) {
-                        recognition.stop();
-                    }
-                } catch (e) {
-                    console.log('Error stopping recognition before restart:', e);
+    // Check for devices first
+    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        navigator.mediaDevices.enumerateDevices()
+            .then(devices => {
+                // Check if any audio input devices are available
+                const hasAudioInput = devices.some(device => device.kind === 'audioinput');
+                
+                if (!hasAudioInput) {
+                    throw new Error('No audio input devices found');
                 }
                 
-                setTimeout(() => {
-                    startVoiceRecognition();
-                }, 500);
-            }
-            
-            // Reset reconnect button
-            if (reconnectBtn) {
-                reconnectBtn.innerHTML = 'Reconnect Microphone';
-                reconnectBtn.disabled = false;
-                reconnectBtn.style.display = 'none'; // Hide it since we're connected
-            }
-            
-            showNotification('success', 'Microphone reconnected!');
-            
-            // Update voice status
-            const voiceStatus = document.getElementById('voiceStatus');
-            if (voiceStatus) {
+                // Try to request microphone access
+                return navigator.mediaDevices.getUserMedia({ 
+                    audio: { 
+                        echoCancellation: true, 
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    } 
+                });
+            })
+            .then(stream => {
+                // Microphone is available
+                stream.getTracks().forEach(track => track.stop()); // Stop the stream
+                updateMicrophoneStatus(true);
+                reconnectAttempts = 0;
+                
                 if (recognitionActive) {
-                    voiceStatus.textContent = 'Listening for wake word "Hey OMIFI"...';
-                } else {
-                    voiceStatus.textContent = 'Voice recognition ready. Click Start to begin.';
+                    // Restart voice recognition with a clean start
+                    try {
+                        if (recognition) {
+                            recognition.stop();
+                        }
+                    } catch (e) {
+                        console.log('Error stopping recognition before restart:', e);
+                    }
+                    
+                    // Initialize a new recognition instance to avoid any stale state
+                    initSpeechRecognition();
+                    
+                    setTimeout(() => {
+                        startVoiceRecognition();
+                    }, 500);
                 }
-            }
-        })
-        .catch(error => {
-            console.error('Microphone reconnect error:', error);
-            updateMicrophoneStatus(false);
-            
-            // Reset reconnect button
-            if (reconnectBtn) {
-                reconnectBtn.innerHTML = 'Retry Microphone Access';
-                reconnectBtn.disabled = false;
-                reconnectBtn.style.display = 'block';
-            }
-            
-            // Show different messages based on the error
-            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-                showNotification('danger', 'Microphone access denied. Please enable microphone access in your browser settings.');
-            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-                showNotification('warning', 'No microphone detected. Please connect a microphone and try again.');
-            } else {
-                showNotification('warning', `Failed to reconnect microphone (attempt ${reconnectAttempts}/${maxReconnectAttempts}). Will try simulated mode.`);
                 
-                // Enable simulated mode for training
-                if (voiceTrainingActive) {
-                    showNotification('info', 'Switching to simulation mode for training.');
+                // Reset reconnect button
+                if (reconnectBtn) {
+                    reconnectBtn.innerHTML = 'Reconnect Microphone';
+                    reconnectBtn.disabled = false;
+                    reconnectBtn.style.display = 'none'; // Hide it since we're connected
                 }
-            }
-            
-            // In web-only mode, we can use server-side fall backs and simulation
-            document.getElementById('voiceStatus').textContent = 'Using simulation mode for voice functions.';
-        });
+                
+                showNotification('success', 'Microphone reconnected!');
+                
+                // Update voice status
+                const voiceStatus = document.getElementById('voiceStatus');
+                if (voiceStatus) {
+                    if (recognitionActive) {
+                        voiceStatus.textContent = 'Listening for wake word "Hey OMIFI"...';
+                    } else {
+                        voiceStatus.textContent = 'Voice recognition ready. Click Start to begin.';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Microphone reconnect error:', error);
+                updateMicrophoneStatus(false);
+                
+                // Reset reconnect button
+                if (reconnectBtn) {
+                    reconnectBtn.innerHTML = 'Retry Microphone Access';
+                    reconnectBtn.disabled = false;
+                    reconnectBtn.style.display = 'block';
+                }
+                
+                // Show different messages based on the error
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    showNotification('danger', 'Microphone access denied. Please enable microphone access in your browser settings.');
+                } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError' || error.message === 'No audio input devices found') {
+                    showNotification('warning', 'No microphone detected. Please connect a microphone and try again.');
+                } else {
+                    showNotification('warning', `Failed to reconnect microphone (attempt ${reconnectAttempts}/${maxReconnectAttempts}). Will continue with server-side commands only.`);
+                }
+                
+                // Update voice status for clarity
+                document.getElementById('voiceStatus').textContent = 'No microphone access. Using button controls instead.';
+                
+                // Schedule another automatic reconnection attempt if we haven't exceeded the limit
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    setTimeout(() => {
+                        reconnectMicrophone();
+                    }, reconnectAttempts * 5000); // Increase delay with each attempt
+                }
+            });
+    } else {
+        // Browser doesn't support enumerateDevices
+        showNotification('warning', 'Your browser does not fully support audio input detection.');
+        document.getElementById('voiceStatus').textContent = 'Limited browser support. Using button controls instead.';
+        
+        if (reconnectBtn) {
+            reconnectBtn.innerHTML = 'Retry Microphone Access';
+            reconnectBtn.disabled = false;
+        }
+    }
 }
 
 /**

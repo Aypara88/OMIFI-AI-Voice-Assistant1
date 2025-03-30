@@ -162,8 +162,9 @@ function updateActionButton(action) {
  * Show a notification message
  * @param {string} type - The type of notification ('success', 'danger', etc.)
  * @param {string} message - The message to display
+ * @param {number} [duration=5000] - Duration in milliseconds before auto-hiding
  */
-function showNotification(type, message) {
+function showNotification(type, message, duration = 5000) {
     const notification = document.createElement('div');
     notification.className = `alert alert-${type} alert-dismissible fade show notification-toast`;
     notification.innerHTML = `
@@ -174,7 +175,7 @@ function showNotification(type, message) {
     // Add to DOM
     document.querySelector('.notifications-container').appendChild(notification);
     
-    // Auto-remove after 5 seconds
+    // Auto-remove after specified duration
     setTimeout(() => {
         if (notification.parentNode) {
             notification.classList.remove('show');
@@ -184,7 +185,7 @@ function showNotification(type, message) {
                 }
             }, 300);
         }
-    }, 5000);
+    }, duration);
 }
 
 /**
@@ -292,8 +293,13 @@ function fallbackServerScreenshot() {
             // Show QR code popup modal for the new screenshot
             if (data.filepath) {
                 setTimeout(() => {
-                    // Use the full filepath for QR code generation
-                    showNewContentModal('screenshot', data.filepath);
+                    // Generate QR code if available in the WebRTC library
+                    if (typeof generateQRCodeForContent === 'function') {
+                        generateQRCodeForContent(data.filepath, 'image');
+                    } else {
+                        // Fall back to modal
+                        showNewContentModal('screenshot', data.filepath);
+                    }
                 }, 500);
             } else {
                 // Reload the page to show the new screenshot if no filepath provided
@@ -319,8 +325,8 @@ function fallbackServerScreenshot() {
 function showNewContentModal(contentType, filepath) {
     // Get content label for display
     const contentLabel = contentType === 'screenshot' ? 'Screenshot' : 'Clipboard Content';
-    const qrEndpoint = contentType === 'screenshot' ? 'get_screenshot_qr' : 'get_clipboard_qr';
-    const downloadEndpoint = contentType === 'screenshot' ? 'get_screenshot' : 'get_clipboard';
+    const qrEndpoint = contentType === 'screenshot' ? 'qr/screenshot' : 'qr/clipboard';
+    const downloadEndpoint = contentType === 'screenshot' ? 'screenshot' : 'clipboard';
     
     // Create modal HTML
     const modal = document.createElement('div');
@@ -428,8 +434,13 @@ function fallbackServerClipboard() {
             // Show QR code popup modal for the new clipboard content
             if (data.filepath) {
                 setTimeout(() => {
-                    // Use the full filepath for QR code generation
-                    showNewContentModal('clipboard', data.filepath);
+                    // Generate QR code if available in the WebRTC library
+                    if (typeof generateQRCodeForContent === 'function') {
+                        generateQRCodeForContent(data.filepath, 'text');
+                    } else {
+                        // Fall back to modal
+                        showNewContentModal('clipboard', data.filepath);
+                    }
                 }, 500);
             } else {
                 // Reload the page to show the new clipboard content if no filepath provided
