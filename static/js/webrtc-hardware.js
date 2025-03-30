@@ -758,9 +758,14 @@ function applyVoiceSettings() {
  * Start voice training for wake word
  */
 function startWakeWordTraining() {
+    // Clear any existing instructions
+    const existingInstructions = document.querySelector('.mic-instructions');
+    if (existingInstructions) {
+        existingInstructions.remove();
+    }
+    
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        // Simulate training if no microphone is available
-        simulateWakeWordTraining();
+        showNotification('danger', 'Your browser does not support microphone access. Please try using Chrome or Edge.');
         return;
     }
     
@@ -769,73 +774,137 @@ function startWakeWordTraining() {
     
     // Disable the button during recording
     startButton.disabled = true;
-    startButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Recording...';
+    startButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Requesting Microphone...';
     
-    // Get wake word from element
+    // Get the wake word phrase
     const wakeWord = document.getElementById('wakeWordPhrase').textContent;
     currentTrainingPhrase = wakeWord.toLowerCase();
     
-    // Record the user saying the wake word
-    navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => {
-            // Update microphone status to available since we successfully got access
-            updateMicrophoneStatus(true);
-            
-            const mediaRecorder = new MediaRecorder(stream);
-            const chunks = [];
-            
-            mediaRecorder.addEventListener('dataavailable', event => {
-                chunks.push(event.data);
-            });
-            
-            mediaRecorder.addEventListener('stop', () => {
-                // Stop all tracks
-                stream.getTracks().forEach(track => track.stop());
-                
-                // Create blob from chunks
-                const audioBlob = new Blob(chunks, { 'type' : 'audio/webm' });
-                
-                // Save wake word sample
-                saveWakeWordSample(audioBlob);
-                
-                // Update progress
-                completeWakeWordTrainingStep();
-            });
-            
-            // Record for 2 seconds
-            mediaRecorder.start();
-            setTimeout(() => {
-                mediaRecorder.stop();
-            }, 2000);
-        })
-        .catch(error => {
-            console.error('Microphone access error:', error);
-            showNotification('warning', 'Using simulation mode for training due to microphone access issues.');
-            simulateWakeWordTraining();
+    // Show recording instructions
+    const recordingInstructions = document.createElement('div');
+    recordingInstructions.className = 'alert alert-primary mt-3';
+    recordingInstructions.innerHTML = `
+        <h5>Recording Instructions</h5>
+        <p>Please say the wake word phrase "<strong>${wakeWord}</strong>" clearly when recording starts.</p>
+        <p>We'll record for 3 seconds after you allow microphone access.</p>
+        <div class="progress mt-3" style="height: 5px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary recording-progress" 
+                 role="progressbar" style="width: 0%"></div>
+        </div>
+    `;
+    document.querySelector('.training-container').appendChild(recordingInstructions);
+    
+    // Request microphone with echo cancellation and noise suppression
+    navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+            echoCancellation: true, 
+            noiseSuppression: true,
+            autoGainControl: true
+        } 
+    })
+    .then(stream => {
+        // Update microphone status to available since we successfully got access
+        updateMicrophoneStatus(true);
+        
+        // Update UI to show recording in progress
+        startButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Recording...';
+        showNotification('success', 'Microphone access granted! Recording now...');
+        
+        const recordingProgress = document.querySelector('.recording-progress');
+        
+        // Animate progress bar during recording
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            progress += 3.33; // Increase every 100ms for 3 seconds
+            if (recordingProgress) {
+                recordingProgress.style.width = Math.min(progress, 100) + '%';
+            }
+        }, 100);
+        
+        const mediaRecorder = new MediaRecorder(stream);
+        const chunks = [];
+        
+        mediaRecorder.addEventListener('dataavailable', event => {
+            chunks.push(event.data);
         });
+        
+        mediaRecorder.addEventListener('stop', () => {
+            // Stop progress animation
+            clearInterval(progressInterval);
+            
+            // Stop all tracks
+            stream.getTracks().forEach(track => track.stop());
+            
+            // Create blob from chunks
+            const audioBlob = new Blob(chunks, { 'type' : 'audio/webm' });
+            
+            // Save wake word sample
+            saveWakeWordSample(audioBlob);
+            
+            // Update progress
+            completeWakeWordTrainingStep();
+            
+            // Remove recording instructions
+            recordingInstructions.remove();
+        });
+        
+        // Record for 3 seconds
+        mediaRecorder.start();
+        setTimeout(() => {
+            mediaRecorder.stop();
+        }, 3000);
+    })
+    .catch(error => {
+        console.error('Microphone access error:', error);
+        
+        // Reset button
+        startButton.disabled = false;
+        startButton.textContent = 'Start Recording';
+        
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            showNotification('danger', 'Microphone access denied. Please allow microphone access in your browser settings to use real-time voice training.');
+        } else {
+            showNotification('danger', 'Could not access microphone: ' + error.message);
+        }
+        
+        // Show detailed instructions
+        simulateWakeWordTraining();
+    });
 }
 
 /**
  * Simulate wake word training when microphone is not available
  */
 function simulateWakeWordTraining() {
-    showNotification('info', 'Simulating training (microphone not available)');
+    // We want real-time training, so notify user that microphone access is required
+    showNotification('warning', 'Real-time voice training requires microphone access. Please allow microphone access in your browser settings and try again.');
     
-    // Get wake word from element
-    const wakeWord = document.getElementById('wakeWordPhrase').textContent;
-    currentTrainingPhrase = wakeWord.toLowerCase();
+    // Reset button state
+    const startButton = document.getElementById('startWakeWordTraining');
+    startButton.disabled = false;
+    startButton.textContent = 'Start Recording';
     
-    // Create a simulated audio sample
-    const dummyAudio = new Uint8Array(1000).fill(128);
-    const audioBlob = new Blob([dummyAudio], { type: 'audio/webm' });
+    // Show instructions to enable microphone
+    const micInstructions = document.createElement('div');
+    micInstructions.className = 'alert alert-info mt-3';
+    micInstructions.innerHTML = `
+        <h5>Microphone Access Required</h5>
+        <p>This feature requires real-time microphone access. Please:</p>
+        <ol>
+            <li>Check that your browser supports microphone access</li>
+            <li>Ensure your microphone is properly connected</li>
+            <li>Allow this site to access your microphone when prompted</li>
+            <li>Try using Chrome or Edge for best compatibility</li>
+        </ol>
+        <button class="btn btn-primary" onclick="reconnectMicrophone()">Try Again</button>
+    `;
     
-    // Save simulated wake word sample
-    saveWakeWordSample(audioBlob);
-    
-    // Update UI to show progress
-    setTimeout(() => {
-        completeWakeWordTrainingStep();
-    }, 1000);
+    // Add instructions to the DOM if not already present
+    const existingInstructions = document.querySelector('.mic-instructions');
+    if (!existingInstructions) {
+        document.querySelector('.training-container').appendChild(micInstructions);
+        micInstructions.classList.add('mic-instructions');
+    }
 }
 
 /**
@@ -868,9 +937,14 @@ function completeWakeWordTrainingStep() {
  * Start voice training for commands
  */
 function startCommandTraining() {
+    // Clear any existing instructions
+    const existingInstructions = document.querySelector('.mic-instructions');
+    if (existingInstructions) {
+        existingInstructions.remove();
+    }
+    
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        // Simulate training if no microphone is available
-        simulateCommandTraining();
+        showNotification('danger', 'Your browser does not support microphone access. Please try using Chrome or Edge.');
         return;
     }
     
@@ -879,84 +953,140 @@ function startCommandTraining() {
     
     // Disable the button during recording
     startButton.disabled = true;
-    startButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Recording...';
+    startButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Requesting Microphone...';
     
     // Get the command phrase
     const command = document.getElementById('commandPhrase').textContent;
     currentTrainingPhrase = command.toLowerCase();
     
-    // Record the user saying the command
-    navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => {
-            // Update microphone status to available since we successfully got access
-            updateMicrophoneStatus(true);
-            
-            const mediaRecorder = new MediaRecorder(stream);
-            const chunks = [];
-            
-            mediaRecorder.addEventListener('dataavailable', event => {
-                chunks.push(event.data);
-            });
-            
-            mediaRecorder.addEventListener('stop', () => {
-                // Stop all tracks
-                stream.getTracks().forEach(track => track.stop());
-                
-                // Create blob from chunks
-                const audioBlob = new Blob(chunks, { 'type' : 'audio/webm' });
-                
-                // Save command sample
-                saveCommandSample(audioBlob);
-                
-                // Update command display and progress
-                updateCommandTrainingProgress();
-                
-                // Enable the button for next recording
-                startButton.disabled = false;
-                startButton.textContent = 'Start Recording';
-            });
-            
-            // Record for 3 seconds
-            mediaRecorder.start();
-            setTimeout(() => {
-                mediaRecorder.stop();
-            }, 3000);
-        })
-        .catch(error => {
-            console.error('Microphone access error:', error);
-            showNotification('warning', 'Using simulation mode for training due to microphone access issues.');
-            simulateCommandTraining();
+    // Show recording instructions
+    const recordingInstructions = document.createElement('div');
+    recordingInstructions.className = 'alert alert-primary mt-3';
+    recordingInstructions.innerHTML = `
+        <h5>Recording Instructions</h5>
+        <p>Please say the command "<strong>${command}</strong>" clearly when recording starts.</p>
+        <p>We'll record for 3 seconds after you allow microphone access.</p>
+        <div class="progress mt-3" style="height: 5px;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary recording-progress-cmd" 
+                 role="progressbar" style="width: 0%"></div>
+        </div>
+    `;
+    document.querySelector('.training-container').appendChild(recordingInstructions);
+    
+    // Request microphone with echo cancellation and noise suppression
+    navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+            echoCancellation: true, 
+            noiseSuppression: true,
+            autoGainControl: true
+        } 
+    })
+    .then(stream => {
+        // Update microphone status to available since we successfully got access
+        updateMicrophoneStatus(true);
+        
+        // Update UI to show recording in progress
+        startButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Recording...';
+        showNotification('success', 'Microphone access granted! Recording now...');
+        
+        const recordingProgress = document.querySelector('.recording-progress-cmd');
+        
+        // Animate progress bar during recording
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            progress += 3.33; // Increase every 100ms for 3 seconds
+            if (recordingProgress) {
+                recordingProgress.style.width = Math.min(progress, 100) + '%';
+            }
+        }, 100);
+        
+        const mediaRecorder = new MediaRecorder(stream);
+        const chunks = [];
+        
+        mediaRecorder.addEventListener('dataavailable', event => {
+            chunks.push(event.data);
         });
+        
+        mediaRecorder.addEventListener('stop', () => {
+            // Stop progress animation
+            clearInterval(progressInterval);
+            
+            // Stop all tracks
+            stream.getTracks().forEach(track => track.stop());
+            
+            // Create blob from chunks
+            const audioBlob = new Blob(chunks, { 'type' : 'audio/webm' });
+            
+            // Save command sample
+            saveCommandSample(audioBlob);
+            
+            // Update command display and progress
+            updateCommandTrainingProgress();
+            
+            // Enable the button for next recording
+            startButton.disabled = false;
+            startButton.textContent = 'Start Recording';
+            
+            // Remove recording instructions
+            recordingInstructions.remove();
+        });
+        
+        // Record for 3 seconds
+        mediaRecorder.start();
+        setTimeout(() => {
+            mediaRecorder.stop();
+        }, 3000);
+    })
+    .catch(error => {
+        console.error('Microphone access error:', error);
+        
+        // Reset button
+        startButton.disabled = false;
+        startButton.textContent = 'Start Recording';
+        
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            showNotification('danger', 'Microphone access denied. Please allow microphone access in your browser settings to use real-time voice training.');
+        } else {
+            showNotification('danger', 'Could not access microphone: ' + error.message);
+        }
+        
+        // Show detailed instructions
+        simulateCommandTraining();
+    });
 }
 
 /**
  * Simulate command training when microphone is not available
  */
 function simulateCommandTraining() {
-    showNotification('info', 'Simulating command training (microphone not available)');
+    // We want real-time training, so notify user that microphone access is required
+    showNotification('warning', 'Real-time voice training requires microphone access. Please allow microphone access in your browser settings and try again.');
     
-    // Get command from element
-    const command = document.getElementById('commandPhrase').textContent;
-    currentTrainingPhrase = command.toLowerCase();
-    
-    // Create a simulated audio sample
-    const dummyAudio = new Uint8Array(1000).fill(128);
-    const audioBlob = new Blob([dummyAudio], { type: 'audio/webm' });
-    
-    // Create a loading effect
+    // Reset button state
     const startButton = document.getElementById('startCommandTraining');
-    startButton.disabled = true;
-    startButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Simulating...';
+    startButton.disabled = false;
+    startButton.textContent = 'Start Recording';
     
-    // Save simulated command sample
-    saveCommandSample(audioBlob);
-    
-    // Update UI to show progress after a delay
-    setTimeout(() => {
-        updateCommandTrainingProgress();
-        startButton.disabled = false;
-        startButton.textContent = 'Start Recording';
-    }, 1500);
+    // Show instructions to enable microphone if not already shown
+    const existingInstructions = document.querySelector('.mic-instructions');
+    if (!existingInstructions) {
+        const micInstructions = document.createElement('div');
+        micInstructions.className = 'alert alert-info mt-3';
+        micInstructions.innerHTML = `
+            <h5>Microphone Access Required</h5>
+            <p>This feature requires real-time microphone access. Please:</p>
+            <ol>
+                <li>Check that your browser supports microphone access</li>
+                <li>Ensure your microphone is properly connected</li>
+                <li>Allow this site to access your microphone when prompted</li>
+                <li>Try using Chrome or Edge for best compatibility</li>
+            </ol>
+            <button class="btn btn-primary" onclick="reconnectMicrophone()">Try Again</button>
+        `;
+        
+        document.querySelector('.training-container').appendChild(micInstructions);
+        micInstructions.classList.add('mic-instructions');
+    }
 }
 
 /**
