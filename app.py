@@ -28,22 +28,42 @@ DUMMY_FLAG_FILE = os.path.expanduser("~/.omifi/dummy_process.flag")
 def create_dummy_omifi_process():
     """Create a dummy flag file to indicate OMIFI is running in web-only mode."""
     try:
-        # Create the base directory if it doesn't exist
-        base_dir = os.path.dirname(DUMMY_FLAG_FILE)
-        if not os.path.exists(base_dir):
+        # Create multiple base directories for better compatibility
+        base_dirs = [
+            os.path.expanduser("~/.omifi"),  # User home directory (standard)
+            os.path.join(os.getcwd(), ".omifi"),  # Current working directory
+            os.path.join(os.getcwd(), "omifi-data"),  # Alternative in current directory
+            "/tmp/omifi"  # Temporary directory (fallback)
+        ]
+        
+        logger.info(f"Initializing OMIFI storage directories: {', '.join(base_dirs)}")
+        
+        for base_dir in base_dirs:
+            # Create base dir
             os.makedirs(base_dir, exist_ok=True)
             
-        # Create a sample screenshot and clipboard file for demo purposes
+            # Create subdirectories
+            screenshots_dir = os.path.join(base_dir, "screenshots")
+            clipboard_dir = os.path.join(base_dir, "clipboard")
+            
+            for directory in [screenshots_dir, clipboard_dir]:
+                os.makedirs(directory, exist_ok=True)
+            
+            # Write a placeholder file to verify write permissions
+            try:
+                with open(os.path.join(base_dir, "directory_check.txt"), 'w') as f:
+                    f.write(f"Directory initialized on {datetime.now().isoformat()}")
+                logger.info(f"Successfully initialized storage directory: {base_dir}")
+            except Exception as e:
+                logger.warning(f"Cannot write to directory {base_dir}: {e}")
+                
+        # Use the user home directory for the flag file
+        base_dir = os.path.dirname(DUMMY_FLAG_FILE)
+        os.makedirs(base_dir, exist_ok=True)
+            
+        # Import here to avoid circular dependencies
         from datetime import datetime
         from PIL import Image
-        
-        # Create directories
-        screenshots_dir = os.path.join(base_dir, "screenshots")
-        clipboard_dir = os.path.join(base_dir, "clipboard")
-        
-        for directory in [screenshots_dir, clipboard_dir]:
-            if not os.path.exists(directory):
-                os.makedirs(directory, exist_ok=True)
         
         # Create dummy metadata.json
         metadata = {
@@ -122,16 +142,54 @@ def get_omifi_status():
 
 def load_metadata():
     """Load the OMIFI metadata file."""
-    metadata_path = os.path.expanduser("~/.omifi/metadata.json")
-    if os.path.exists(metadata_path):
+    # Try multiple locations for metadata file
+    metadata_paths = [
+        os.path.expanduser("~/.omifi/metadata.json"),
+        os.path.join(os.getcwd(), ".omifi/metadata.json"),
+        os.path.join(os.getcwd(), "omifi-data/metadata.json"),
+        "/tmp/omifi/metadata.json"
+    ]
+    
+    # Try each path until we find a valid metadata file
+    for metadata_path in metadata_paths:
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                    logger.info(f"Loaded metadata from {metadata_path}")
+                    
+                    # Enhance filepath with directory info if needed
+                    base_dir = os.path.dirname(metadata_path)
+                    
+                    # Fix paths to be compatible with current server
+                    for item_type in ['screenshots', 'clipboard']:
+                        for item in metadata.get(item_type, []):
+                            # If filepath is just a filename, ensure it's properly handled
+                            if 'filepath' in item and not os.path.isabs(item['filepath']):
+                                # Don't modify if it's already a relative path that our routes expect
+                                pass
+                    
+                    return metadata
+            except (json.JSONDecodeError, IOError) as e:
+                logger.error(f"Error loading metadata from {metadata_path}: {e}")
+    
+    # If no valid metadata file found, create a new one in the first writable location
+    logger.warning("No valid metadata file found, creating new empty metadata")
+    empty_metadata = {"screenshots": [], "clipboard": []}
+    
+    # Try to save the empty metadata to the first writable location
+    for metadata_path in metadata_paths:
         try:
-            with open(metadata_path, 'r') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            logger.error(f"Error loading metadata: {e}")
+            os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
+            with open(metadata_path, 'w') as f:
+                json.dump(empty_metadata, f, indent=2)
+            logger.info(f"Created new metadata file at {metadata_path}")
+            break
+        except Exception as e:
+            logger.warning(f"Failed to create metadata at {metadata_path}: {e}")
     
     # Return empty metadata if file doesn't exist or can't be loaded
-    return {"screenshots": [], "clipboard": []}
+    return empty_metadata
 
 @app.route('/')
 def index():
@@ -302,13 +360,51 @@ def status():
 def get_clipboard(filepath):
     """Get clipboard content by filepath."""
     try:
-        fullpath = os.path.join(os.path.expanduser("~/.omifi/clipboard"), filepath)
-        # Check if file exists and is within the clipboard directory
-        if os.path.exists(fullpath) and os.path.commonpath([fullpath, os.path.expanduser("~/.omifi/clipboard")]) == os.path.expanduser("~/.omifi/clipboard"):
-            with open(fullpath, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return content
+        # First try user home directory path
+        base_dir = os.path.expanduser("~/.omifi/clipboard")
+        fullpath = os.path.join(base_dir, filepath)
+        
+        # If file doesn't exist in that path, try server-relative paths
+        if not os.path.exists(fullpath):
+            # Try alternative paths
+            alt_paths = [
+                os.path.join(os.getcwd(), '.omifi/clipboard', filepath),
+                os.path.join(os.getcwd(), 'omifi-data/clipboard', filepath),
+                os.path.join('/tmp/omifi/clipboard', filepath)
+            ]
+            
+            for path in alt_paths:
+                if os.path.exists(path):
+                    fullpath = path
+                    base_dir = os.path.dirname(path)
+                    break
+        
+        # Check if file exists and is within a clipboard directory (security check)
+        if os.path.exists(fullpath) and os.path.commonpath([fullpath, base_dir]) == base_dir:
+            # Determine MIME type by extension
+            _, ext = os.path.splitext(fullpath)
+            if ext.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']:
+                return send_file(fullpath, mimetype=f'image/{ext[1:].lower()}')
+            else:
+                # Try to read as text first
+                try:
+                    with open(fullpath, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    
+                    # Auto-detect if it's JSON to return proper content type
+                    if content.strip().startswith('{') or content.strip().startswith('['):
+                        try:
+                            json.loads(content)
+                            return content, 200, {'Content-Type': 'application/json'}
+                        except json.JSONDecodeError:
+                            pass
+                    
+                    return content
+                except UnicodeDecodeError:
+                    # If it's not valid text, send as binary file
+                    return send_file(fullpath)
         else:
+            logger.warning(f"File not found or invalid path: {filepath}")
             return "File not found or invalid path", 404
     except Exception as e:
         logger.error(f"Error retrieving clipboard content: {e}")
@@ -318,11 +414,35 @@ def get_clipboard(filepath):
 def get_screenshot(filepath):
     """Serve screenshot images."""
     try:
-        fullpath = os.path.join(os.path.expanduser("~/.omifi/screenshots"), filepath)
-        # Check if file exists and is within the screenshots directory
-        if os.path.exists(fullpath) and os.path.commonpath([fullpath, os.path.expanduser("~/.omifi/screenshots")]) == os.path.expanduser("~/.omifi/screenshots"):
-            return send_file(fullpath)
+        # First try user home directory path
+        base_dir = os.path.expanduser("~/.omifi/screenshots")
+        fullpath = os.path.join(base_dir, filepath)
+        
+        # If file doesn't exist in that path, try server-relative paths
+        if not os.path.exists(fullpath):
+            # Try alternative paths
+            alt_paths = [
+                os.path.join(os.getcwd(), '.omifi/screenshots', filepath),
+                os.path.join(os.getcwd(), 'omifi-data/screenshots', filepath),
+                os.path.join('/tmp/omifi/screenshots', filepath)
+            ]
+            
+            for path in alt_paths:
+                if os.path.exists(path):
+                    fullpath = path
+                    base_dir = os.path.dirname(path)
+                    break
+        
+        # Check if file exists and is within a screenshots directory (security check)
+        if os.path.exists(fullpath) and os.path.commonpath([fullpath, base_dir]) == base_dir:
+            # Determine MIME type by extension for better browser handling
+            _, ext = os.path.splitext(fullpath)
+            if ext.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']:
+                return send_file(fullpath, mimetype=f'image/{ext[1:].lower()}')
+            else:
+                return send_file(fullpath)
         else:
+            logger.warning(f"Screenshot not found or invalid path: {filepath}")
             return "File not found or invalid path", 404
     except Exception as e:
         logger.error(f"Error retrieving screenshot: {e}")
@@ -343,8 +463,21 @@ def get_screenshot_qr(filepath):
             filename = filepath
         
         # Create the full URL to the screenshot
+        # Try to get the best public URL for access from mobile devices
         base_url = request.url_root.rstrip('/')
+        
+        # Check for Replit-specific domains if this is running in Replit
+        replit_domain = os.environ.get('REPL_SLUG')
+        if replit_domain:
+            # If running on Replit, use the Replit domain if available
+            replit_owner = os.environ.get('REPL_OWNER', '')
+            if replit_owner:
+                base_url = f"https://{replit_domain}.{replit_owner}.repl.co"
+            else:
+                base_url = f"https://{replit_domain}.repl.co"
+        
         screenshot_url = f"{base_url}/screenshots/{filename}"
+        logger.info(f"Generated screenshot QR URL: {screenshot_url}")
         
         # Generate QR code using simple version to avoid import issues
         img = qrcode.make(screenshot_url)
@@ -374,8 +507,21 @@ def get_clipboard_qr(filepath):
             filename = filepath
         
         # Create the full URL to the clipboard
+        # Try to get the best public URL for access from mobile devices
         base_url = request.url_root.rstrip('/')
+        
+        # Check for Replit-specific domains if this is running in Replit
+        replit_domain = os.environ.get('REPL_SLUG')
+        if replit_domain:
+            # If running on Replit, use the Replit domain if available
+            replit_owner = os.environ.get('REPL_OWNER', '')
+            if replit_owner:
+                base_url = f"https://{replit_domain}.{replit_owner}.repl.co"
+            else:
+                base_url = f"https://{replit_domain}.repl.co"
+        
         clipboard_url = f"{base_url}/clipboard/{filename}"
+        logger.info(f"Generated clipboard QR URL: {clipboard_url}")
         
         # Generate QR code using simple version to avoid import issues
         img = qrcode.make(clipboard_url)
