@@ -599,62 +599,134 @@ function takeScreenshotFromBrowser() {
  * Sense clipboard content using the browser's clipboard API
  */
 function senseClipboardFromBrowser() {
-    if (!navigator.clipboard || !navigator.clipboard.readText) {
+    // Check for clipboard API support
+    if (!navigator.clipboard) {
         showNotification('warning', 'Clipboard access not supported in your browser');
+        fallbackServerClipboard();
         return;
     }
     
-    navigator.clipboard.readText()
-        .then(text => {
-            if (!text) {
-                showNotification('warning', 'Clipboard is empty or contains non-text content');
-                return;
-            }
-            
-            // Create form data to send to server
-            const formData = new FormData();
-            formData.append('content', text);
-            
-            // Send to server
-            fetch('/sense-clipboard', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showNotification('success', 'Clipboard content captured from browser');
-                    
-                    // Show preview if content isn't too long
-                    if (text.length <= 50) {
-                        showNotification('info', `Clipboard content: ${text}`);
+    // First try to detect if there's an image in the clipboard
+    tryReadClipboardImage()
+        .then(imageBlob => {
+            if (imageBlob) {
+                // We have an image, upload it
+                const formData = new FormData();
+                formData.append('content', imageBlob);
+                formData.append('type', 'image');
+                
+                // Send to server
+                fetch('/sense-clipboard', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showNotification('success', 'Image from clipboard captured!');
+                        
+                        // Generate QR code for the clipboard content
+                        if (data.filepath && typeof generateQRCodeForContent === 'function') {
+                            generateQRCodeForContent(data.filepath, 'image');
+                        }
                     } else {
-                        showNotification('info', `Clipboard content: ${text.substring(0, 47)}...`);
+                        showNotification('danger', data.message || 'Error saving clipboard image');
                     }
-                    
-                    // Generate QR code for the clipboard content
-                    if (data.filepath && typeof generateQRCodeForContent === 'function') {
-                        generateQRCodeForContent(data.filepath, 'text');
-                    }
-                    
-                    // Don't reload automatically so user can view the QR code
-                    // We'll rely on the QR modal's close event to refresh the page
-                } else {
-                    showNotification('danger', data.message || 'Error saving clipboard content');
-                }
-            })
-            .catch(error => {
-                console.error('Error saving clipboard content:', error);
-                showNotification('danger', 'Error saving clipboard content');
-            });
+                })
+                .catch(error => {
+                    console.error('Error saving clipboard image:', error);
+                    showNotification('danger', 'Error saving clipboard image');
+                });
+            } else {
+                // No image found, try for text
+                navigator.clipboard.readText()
+                    .then(text => {
+                        if (!text) {
+                            showNotification('warning', 'Clipboard is empty or contains unsupported content');
+                            return;
+                        }
+                        
+                        // Create form data to send to server
+                        const formData = new FormData();
+                        formData.append('content', text);
+                        formData.append('type', 'text');
+                        
+                        // Send to server
+                        fetch('/sense-clipboard', {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                showNotification('success', 'Clipboard content captured from browser');
+                                
+                                // Show preview if content isn't too long
+                                if (text.length <= 50) {
+                                    showNotification('info', `Clipboard content: ${text}`);
+                                } else {
+                                    showNotification('info', `Clipboard content: ${text.substring(0, 47)}...`);
+                                }
+                                
+                                // Generate QR code for the clipboard content
+                                if (data.filepath && typeof generateQRCodeForContent === 'function') {
+                                    generateQRCodeForContent(data.filepath, 'text');
+                                }
+                            } else {
+                                showNotification('danger', data.message || 'Error saving clipboard content');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error saving clipboard content:', error);
+                            showNotification('danger', 'Error saving clipboard content');
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error reading clipboard text:', error);
+                        showNotification('danger', 'Clipboard text access was denied or failed');
+                        
+                        // Fall back to server-side clipboard
+                        fallbackServerClipboard();
+                    });
+            }
         })
         .catch(error => {
-            console.error('Error reading clipboard:', error);
-            showNotification('danger', 'Clipboard access was denied or failed');
-            
-            // Fall back to server-side clipboard
+            console.error('Error accessing clipboard:', error);
             fallbackServerClipboard();
         });
+}
+
+/**
+ * Try to read an image from clipboard
+ * @returns {Promise<Blob|null>} A promise resolving to the image blob or null if no image
+ */
+async function tryReadClipboardImage() {
+    // Check if Clipboard API is available with proper item reading
+    if (!navigator.clipboard || !navigator.clipboard.read) {
+        return null;
+    }
+    
+    try {
+        const items = await navigator.clipboard.read();
+        
+        for (const item of items) {
+            // Check if there's an image type in the clipboard
+            if (item.types.some(type => type.startsWith('image/'))) {
+                // Get the first image type
+                const imageType = item.types.find(type => type.startsWith('image/'));
+                
+                // Get the image blob
+                const blob = await item.getType(imageType);
+                return blob;
+            }
+        }
+        
+        // No image found
+        return null;
+    } catch (error) {
+        console.warn('Could not read clipboard data:', error);
+        return null;
+    }
 }
 
 /**

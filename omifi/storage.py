@@ -105,7 +105,7 @@ class Storage:
         Save clipboard content to storage.
         
         Args:
-            content: Clipboard content (text for now)
+            content: Clipboard content (text, binary data, etc.)
             content_type: Type of content (text, image, etc.)
             filename: Name for the saved file
             
@@ -115,11 +115,22 @@ class Storage:
         # Generate filename if not provided
         if not filename:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"clipboard_{timestamp}.txt"
+            
+            # Set appropriate extension based on content type
+            if content_type == "text":
+                extension = ".txt"
+            elif content_type == "image":
+                extension = ".png"  # Default to PNG for images
+            else:
+                extension = ".bin"  # Binary data for unknown types
+                
+            filename = f"clipboard_{timestamp}{extension}"
         
-        # Ensure the filename has a .txt extension for text content
-        if content_type == "text" and not filename.lower().endswith('.txt'):
+        # Ensure the filename has appropriate extension
+        if content_type == "text" and not any(filename.lower().endswith(ext) for ext in ['.txt', '.md', '.json', '.csv']):
             filename += '.txt'
+        elif content_type == "image" and not any(filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']):
+            filename += '.png'
         
         # Save the content
         filepath = os.path.join(self.clipboard_dir, filename)
@@ -128,9 +139,50 @@ class Storage:
         if content_type == "text":
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(content)
+        elif content_type == "image":
+            # For binary image data
+            try:
+                # Check if content is a string (base64) or bytes
+                if isinstance(content, str) and content.startswith(('data:image', 'http')):
+                    # It's likely a data URL or web URL - pass to PIL to handle
+                    from PIL import Image
+                    import io
+                    import base64
+                    import re
+                    
+                    # Handle data URLs (base64)
+                    if content.startswith('data:image'):
+                        # Extract the base64 content
+                        base64_data = re.sub('^data:image/.+;base64,', '', content)
+                        image_data = base64.b64decode(base64_data)
+                        with open(filepath, 'wb') as f:
+                            if isinstance(image_data, bytes):
+                                f.write(image_data)
+                    else:
+                        # It's a URL or something else - try to handle with PIL
+                        import urllib.request
+                        urllib.request.urlretrieve(content, filepath)
+                else:
+                    # It's binary data
+                    with open(filepath, 'wb') as f:
+                        if isinstance(content, bytes):
+                            f.write(content)
+                        elif isinstance(content, str):
+                            f.write(content.encode('utf-8'))
+            except Exception as e:
+                # Fall back to raw binary writing
+                with open(filepath, 'wb') as f:
+                    if isinstance(content, bytes):
+                        f.write(content)
+                    elif isinstance(content, str):
+                        f.write(content.encode('utf-8'))
         else:
-            # For future content types like images
-            pass
+            # For other binary data types
+            with open(filepath, 'wb') as f:
+                if isinstance(content, bytes):
+                    f.write(content)
+                elif isinstance(content, str):
+                    f.write(content.encode('utf-8'))
         
         # Update metadata
         clip_info = {
@@ -192,13 +244,24 @@ class Storage:
             # Read the content based on type
             content_type = sorted_clipboard[0].get("type", "text")
             
-            if content_type == "text" and os.path.exists(filepath):
+            if not os.path.exists(filepath):
+                return None, None
+                
+            # Handle different content types
+            if content_type == "text":
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         content = f.read()
                     return filepath, content
                 except IOError:
                     pass
+            elif content_type == "image":
+                # For images, just return the path - we don't load the binary content
+                # The web app will serve the image file directly
+                return filepath, f"[Image: {os.path.basename(filepath)}]"
+            else:
+                # For other binary types, return the path and a description
+                return filepath, f"[Binary content: {os.path.basename(filepath)}]"
         
         return None, None
     

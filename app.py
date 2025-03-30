@@ -512,6 +512,29 @@ def sense_clipboard():
             # Save content directly
             filepath = storage.save_clipboard_content(content, content_type)
             logger.info(f"Browser clipboard content saved to {filepath}")
+            
+            # Set preview based on content type
+            if content_type == 'text':
+                content_preview = content[:100] + "..." if len(content) > 100 else content
+            else:
+                content_preview = f"[{content_type.upper()} content]"
+        
+        # Check if we have a file upload (for image data)
+        elif 'content' in request.files:
+            logger.info("Received file upload from browser")
+            file = request.files['content']
+            content_type = request.form.get('type', 'image')
+            
+            # Read file content
+            content = file.read()
+            
+            # Save content
+            filepath = storage.save_clipboard_content(content, content_type, filename=file.filename)
+            logger.info(f"Browser clipboard file saved to {filepath}")
+            
+            # Set preview based on content type
+            content_preview = f"[{content_type.upper()} content]"
+                
         else:
             # Fall back to traditional clipboard sensing
             from omifi.clipboard import ClipboardManager
@@ -519,6 +542,12 @@ def sense_clipboard():
             
             # Sense clipboard
             content_type, content = clipboard_manager.sense_clipboard()
+            
+            # Set preview for text content
+            if content_type == 'text' and content:
+                content_preview = content[:100] + "..." if len(content) > 100 else content
+            else:
+                content_preview = f"[{content_type.upper()} content]"
         
         if content:
             # Get filepath from storage
@@ -527,9 +556,9 @@ def sense_clipboard():
             
             return jsonify({
                 "success": True,
-                "message": "Clipboard content captured successfully",
+                "message": f"Clipboard {content_type} content captured successfully",
                 "content_type": content_type,
-                "content_preview": content[:100] + "..." if len(content) > 100 else content,
+                "content_preview": content_preview,
                 "filepath": filepath,  # Return full filepath for QR code generation
                 "filename": filename   # Filename for display purposes
             })
