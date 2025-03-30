@@ -6,3 +6,4 @@ voice commands for taking screenshots, sensing clipboard content, and more.
 """
 
 __version__ = "0.1.0"
+__author__ = "OMIFI Team"

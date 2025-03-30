@@ -3,286 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OMIFI Voice Assistant Dashboard</title>
+    <title>OMIFI Assistant - Dashboard</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
-    <style>
-        .screenshot-card {
-            height: 220px;
-            margin-bottom: 1rem;
-        }
-        
-        .screenshot-img {
-            max-height: 150px;
-            object-fit: contain;
-            cursor: pointer;
-            transition: transform 0.2s;
-        }
-        
-        .screenshot-img:hover {
-            transform: scale(1.05);
-        }
-        
-        .clipboard-item {
-            cursor: pointer;
-        }
-        
-        .clipboard-content {
-            max-height: 500px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            font-family: monospace;
-        }
-        
-        .status-indicator {
-            display: inline-block;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 8px;
-        }
-        
-        .status-running {
-            background-color: var(--bs-success);
-        }
-        
-        .status-stopped {
-            background-color: var(--bs-danger);
-        }
-        
-        .pre-wrap {
-            white-space: pre-wrap;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-robot me-2" viewBox="0 0 16 16">
-                    <path d="M6 12.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5M3 8.062C3 6.76 4.235 5.765 5.53 5.886a26.58 26.58 0 0 0 4.94 0C11.765 5.765 13 6.76 13 8.062v1.157a.933.933 0 0 1-.765.935c-.845.147-2.34.346-4.235.346-1.895 0-3.39-.2-4.235-.346A.933.933 0 0 1 3 9.219zm4.542-.827a.25.25 0 0 0-.217.068l-.92.9a.25.25 0 0 1-.442-.004l-.932-.97a.25.25 0 0 0-.397.047l-.12.187a.25.25 0 0 0 .122.33l.2.105c.324.164.636.36.925.587.265.21.551.426.862.643.035.027.076.038.118.037.042 0 .083-.012.118-.037.311-.217.597-.433.862-.642.29-.227.601-.423.925-.587l.2-.105a.25.25 0 0 0 .122-.33l-.12-.187a.25.25 0 0 0-.397-.047l-.932.97a.25.25 0 0 1-.442.004l-.92-.9a.25.25 0 0 0-.183-.068h-.034z"/>
-                    <path d="M2.662 8.278c-.956 0-1.736-.8-1.736-1.782C.926 5.513 1.706 4.7 2.662 4.7c.22 0 .43.039.628.11a7.184 7.184 0 0 0-.374 1.165c-.208 1.042-.172 1.489-.004 2.142.025.09.066.172.121.25-.135.022-.274.037-.418.037m10.677 0c-.217 0-.428-.037-.628-.11.046-.078.087-.16.12-.25.168-.653.204-1.1-.004-2.142a7.184 7.184 0 0 0-.373-1.164c.197-.072.408-.111.628-.111.956 0 1.736.813 1.736 1.795 0 .983-.78 1.782-1.736 1.782M3.818 3.823A3.76 3.76 0 0 0 1.392 2.304l-.798-1.596A1 1 0 0 1 1.5 0h13a1 1 0 0 1 .894 1.46L14.61 2.304a3.76 3.76 0 0 0-2.43 1.519c-.883 1.224-2.039 1.873-4.18 1.873s-3.297-.65-4.18-1.873M7.5 3c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1m1 2.5c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1M10 3c.55 0 1-.45 1-1s-.45-1-1-1-1 .45-1 1 .45 1 1 1"/>
-                    <path d="M10 12c-.193 0-.38-.057-.537-.167l-1.625-1.104a.49.49 0 0 0-.5.009L5.645 11.9a1.2 1.2 0 0 1-1.29 0l-1.2-.853a.49.49 0 0 0-.5-.008L1.047 11.93a1 1 0 0 1-1.015-1.717l5-3.575a2.5 2.5 0 0 1 2.936 0l5 3.575a1 1 0 0 1-1.015 1.718l-1.608-.89a.49.49 0 0 0-.5.009l-1.625 1.104A1.2 1.2 0 0 1 10 12"/><path d="M2 12.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1h-11a.5.5 0 0 1-.5-.5"/>
-                </svg>
-                OMIFI Dashboard
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/">Home</a>
-                    </li>
-                </ul>
+    <div class="container py-4">
+        <header class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
+            <h1 class="fw-bold">OMIFI Assistant</h1>
+            <div class="status-indicator">
+                {% if is_running %}
                 <div class="d-flex align-items-center">
-                    <div class="me-3">
-                        <span class="status-indicator {% if omifi_running %}status-running{% else %}status-stopped{% endif %}"></span>
-                        <span id="status-text">OMIFI is {% if omifi_running %}running{% else %}stopped{% endif %}</span>
-                    </div>
-                    <button id="toggle-omifi" class="btn {% if omifi_running %}btn-danger{% else %}btn-success{% endif %} btn-sm">
-                        {% if omifi_running %}Stop OMIFI{% else %}Start OMIFI{% endif %}
-                    </button>
+                    <span class="status-dot active me-2"></span>
+                    <span class="status-text">Running</span>
+                    <a href="{{ url_for('stop_omifi') }}" class="btn btn-sm btn-outline-danger ms-3">Stop</a>
                 </div>
+                {% else %}
+                <div class="d-flex align-items-center">
+                    <span class="status-dot inactive me-2"></span>
+                    <span class="status-text">Stopped</span>
+                    <a href="{{ url_for('start_omifi') }}" class="btn btn-sm btn-outline-success ms-3">Start</a>
+                </div>
+                {% endif %}
             </div>
-        </div>
-    </nav>
+        </header>
 
-    <div class="container-fluid">
         <div class="row mb-4">
-            <div class="col-12">
-                <div class="card">
+            <div class="col-md-6">
+                <div class="card mb-4 h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Voice Commands</h5>
+                    </div>
                     <div class="card-body">
-                        <h5 class="card-title">Voice Commands</h5>
-                        <p class="card-text">
-                            OMIFI responds to the following voice commands:
-                        </p>
-                        <ul>
-                            <li>"Hey OMIFI, take a screenshot" - Captures your screen</li>
-                            <li>"Hey OMIFI, sense clipboard" - Saves the current clipboard content</li>
-                            <li>"Hey OMIFI, read clipboard" - Reads aloud the saved clipboard content</li>
-                            <li>"Hey OMIFI, open last screenshot" - Opens the most recent screenshot</li>
-                            <li>"Hey OMIFI, help" - Lists available commands</li>
+                        <p>Say <strong>"Hey OMIFI"</strong> followed by one of these commands:</p>
+                        <ul class="list-group">
+                            <li class="list-group-item">Take a screenshot</li>
+                            <li class="list-group-item">Sense clipboard</li>
+                            <li class="list-group-item">Read clipboard</li>
+                            <li class="list-group-item">Show last screenshot</li>
+                            <li class="list-group-item">What can you do? (for help)</li>
                         </ul>
                     </div>
                 </div>
             </div>
-        </div>
-
-        <div class="row">
-            <div class="col-md-6 mb-4">
-                <div class="card h-100">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Recent Screenshots</h5>
-                        <span class="badge bg-secondary">{{ screenshots|length }}</span>
+            <div class="col-md-6">
+                <div class="card mb-4 h-100">
+                    <div class="card-header">
+                        <h5 class="mb-0">Status</h5>
                     </div>
                     <div class="card-body">
-                        {% if screenshots %}
-                            <div class="row">
-                                {% for screenshot in screenshots %}
-                                    <div class="col-md-6 col-lg-4">
-                                        <div class="card screenshot-card">
-                                            <div class="card-body text-center">
-                                                <img src="/screenshot/{{ screenshot.filepath }}" alt="Screenshot" class="img-fluid screenshot-img" data-bs-toggle="modal" data-bs-target="#screenshotModal" data-src="/screenshot/{{ screenshot.filepath }}">
-                                                <p class="card-text mt-2 small">{{ screenshot.formatted_time }}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                {% endfor %}
+                        <p>OMIFI is ready to assist you with:</p>
+                        <div class="features">
+                            <div class="feature-item">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feature-icon">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                    <polyline points="21 15 16 10 5 21"></polyline>
+                                </svg>
+                                <span>Screenshot Capture</span>
                             </div>
-                        {% else %}
-                            <div class="alert alert-info">
-                                No screenshots available. Say "Hey OMIFI, take a screenshot" to capture your screen.
+                            <div class="feature-item">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feature-icon">
+                                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                                    <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                                </svg>
+                                <span>Clipboard Management</span>
                             </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-6 mb-4">
-                <div class="card h-100">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Clipboard History</h5>
-                        <span class="badge bg-secondary">{{ clipboard_items|length }}</span>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-5">
-                                <div class="list-group clipboard-list">
-                                    {% if clipboard_items %}
-                                        {% for item in clipboard_items %}
-                                            <button type="button" class="list-group-item list-group-item-action clipboard-item" data-filepath="{{ item.filepath }}">
-                                                {{ item.formatted_time }}
-                                            </button>
-                                        {% endfor %}
-                                    {% else %}
-                                        <div class="list-group-item disabled">
-                                            No clipboard content available. Say "Hey OMIFI, sense clipboard" to save your clipboard.
-                                        </div>
-                                    {% endif %}
-                                </div>
+                            <div class="feature-item">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feature-icon">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                                </svg>
+                                <span>Voice Recognition</span>
                             </div>
-                            <div class="col-md-7">
-                                <div class="card">
-                                    <div class="card-header">
-                                        <h6 class="mb-0">Clipboard Content</h6>
-                                    </div>
-                                    <div class="card-body">
-                                        <pre id="clipboard-content" class="clipboard-content text-white-50">Select an item to view content</pre>
-                                    </div>
-                                </div>
+                            <div class="feature-item">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feature-icon">
+                                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                                </svg>
+                                <span>Text-to-Speech</span>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Screenshot Modal -->
-    <div class="modal fade" id="screenshotModal" tabindex="-1" aria-labelledby="screenshotModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="screenshotModalLabel">Screenshot</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Recent Screenshots</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if screenshots %}
+                        <div class="list-group list-group-flush">
+                            {% for screenshot in screenshots %}
+                            <a href="{{ url_for('get_screenshot', filepath=screenshot.filepath) }}" target="_blank" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                <div>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2">
+                                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                        <polyline points="21 15 16 10 5 21"></polyline>
+                                    </svg>
+                                    {{ screenshot.filename }}
+                                </div>
+                                <small class="text-muted">{{ screenshot.timestamp.replace('T', ' ').split('.')[0] }}</small>
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-center py-4">
+                            <p class="text-muted">No screenshots captured yet</p>
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
-                <div class="modal-body text-center">
-                    <img id="modal-screenshot" src="" alt="Screenshot" class="img-fluid">
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">Recent Clipboard Items</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if clipboard %}
+                        <div class="list-group list-group-flush">
+                            {% for clip in clipboard %}
+                            <a href="{{ url_for('get_clipboard', filepath=clip.filepath) }}" target="_blank" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                <div>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2">
+                                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                                    </svg>
+                                    {{ clip.type|capitalize }} content
+                                </div>
+                                <small class="text-muted">{{ clip.timestamp.replace('T', ' ').split('.')[0] }}</small>
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-center py-4">
+                            <p class="text-muted">No clipboard items captured yet</p>
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Toggle OMIFI status
-            const toggleButton = document.getElementById('toggle-omifi');
-            toggleButton.addEventListener('click', function() {
-                const isRunning = toggleButton.classList.contains('btn-danger');
-                const endpoint = isRunning ? '/stop' : '/start';
-                
-                fetch(endpoint, { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        refreshStatus();
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                    });
-            });
-            
-            // Screenshot modal
-            const screenshotModal = document.getElementById('screenshotModal');
-            if (screenshotModal) {
-                screenshotModal.addEventListener('show.bs.modal', function(event) {
-                    const button = event.relatedTarget;
-                    const src = button.getAttribute('data-src');
-                    const modalImage = document.getElementById('modal-screenshot');
-                    modalImage.src = src;
-                });
-            }
-            
-            // Clipboard items
-            const clipboardItems = document.querySelectorAll('.clipboard-item');
-            clipboardItems.forEach(item => {
-                item.addEventListener('click', function() {
-                    const filepath = this.getAttribute('data-filepath');
-                    
-                    // Remove active class from all items
-                    clipboardItems.forEach(i => i.classList.remove('active'));
-                    
-                    // Add active class to clicked item
-                    this.classList.add('active');
-                    
-                    // Fetch clipboard content
-                    fetch('/clipboard/' + filepath)
-                        .then(response => response.text())
-                        .then(content => {
-                            document.getElementById('clipboard-content').textContent = content;
-                        })
-                        .catch(error => {
-                            console.error('Error:', error);
-                            document.getElementById('clipboard-content').textContent = 'Error loading content';
-                        });
-                });
-            });
-            
-            // Auto-refresh status
-            function refreshStatus() {
-                fetch('/status')
-                    .then(response => response.json())
-                    .then(data => {
-                        const statusText = document.getElementById('status-text');
-                        const statusIndicator = document.querySelector('.status-indicator');
-                        
-                        if (data.running) {
-                            statusText.textContent = 'OMIFI is running';
-                            statusIndicator.classList.remove('status-stopped');
-                            statusIndicator.classList.add('status-running');
-                            toggleButton.textContent = 'Stop OMIFI';
-                            toggleButton.classList.remove('btn-success');
-                            toggleButton.classList.add('btn-danger');
-                        } else {
-                            statusText.textContent = 'OMIFI is stopped';
-                            statusIndicator.classList.remove('status-running');
-                            statusIndicator.classList.add('status-stopped');
-                            toggleButton.textContent = 'Start OMIFI';
-                            toggleButton.classList.remove('btn-danger');
-                            toggleButton.classList.add('btn-success');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                    });
-            }
-            
-            // Refresh status every 5 seconds
-            setInterval(refreshStatus, 5000);
-        });
-    </script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

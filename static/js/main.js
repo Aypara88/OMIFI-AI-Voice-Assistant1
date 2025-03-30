@@ -6,55 +6,22 @@
  * Initialize the dashboard
  */
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize elements
-    const toggleButton = document.getElementById('toggle-omifi');
-    const statusText = document.getElementById('status-text');
-    const statusIndicator = document.querySelector('.status-indicator');
-    const screenshotModal = document.getElementById('screenshotModal');
-    const clipboardItems = document.querySelectorAll('.clipboard-item');
-    
-    // Set up event listeners
-    if (toggleButton) {
-        toggleButton.addEventListener('click', toggleOmifiStatus);
-    }
-    
-    // Set up screenshot modal
-    if (screenshotModal) {
-        screenshotModal.addEventListener('show.bs.modal', function(event) {
-            const button = event.relatedTarget;
-            const src = button.getAttribute('data-src');
-            const modalImage = document.getElementById('modal-screenshot');
-            if (modalImage) {
-                modalImage.src = src;
-            }
-        });
-    }
-    
-    // Set up clipboard items
-    clipboardItems.forEach(item => {
-        item.addEventListener('click', fetchClipboardContent);
-    });
-    
-    // Start auto-refresh
-    setInterval(refreshStatus, 5000);
+    // Set up periodic status refresh
+    setInterval(refreshStatus, 10000); // Check status every 10 seconds
 });
 
 /**
  * Toggle OMIFI running status
  */
 function toggleOmifiStatus() {
-    const toggleButton = document.getElementById('toggle-omifi');
-    const isRunning = toggleButton.classList.contains('btn-danger');
-    const endpoint = isRunning ? '/stop' : '/start';
+    const statusIndicator = document.querySelector('.status-indicator');
+    const isRunning = statusIndicator.querySelector('.status-dot').classList.contains('active');
     
-    fetch(endpoint, { method: 'POST' })
-        .then(response => response.json())
-        .then(data => {
-            refreshStatus();
-        })
-        .catch(error => {
-            console.error('Error:', error);
-        });
+    // Get the appropriate URL based on current status
+    const url = isRunning ? '/stop' : '/start';
+    
+    // Navigate to the URL
+    window.location.href = url;
 }
 
 /**
@@ -62,24 +29,54 @@ function toggleOmifiStatus() {
  * @param {Event} event - Click event
  */
 function fetchClipboardContent(event) {
-    const clipboardItems = document.querySelectorAll('.clipboard-item');
-    const filepath = this.getAttribute('data-filepath');
+    event.preventDefault();
     
-    // Remove active class from all items
-    clipboardItems.forEach(i => i.classList.remove('active'));
+    const url = event.currentTarget.href;
     
-    // Add active class to clicked item
-    this.classList.add('active');
-    
-    // Fetch clipboard content
-    fetch('/clipboard/' + filepath)
-        .then(response => response.text())
+    fetch(url)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.text();
+        })
         .then(content => {
-            document.getElementById('clipboard-content').textContent = content;
+            // Create modal to display content
+            const modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.setAttribute('tabindex', '-1');
+            
+            modal.innerHTML = `
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Clipboard Content</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <pre class="mb-0">${escapeHtml(content)}</pre>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Show the modal
+            const modalInstance = new bootstrap.Modal(modal);
+            modalInstance.show();
+            
+            // Remove from DOM when hidden
+            modal.addEventListener('hidden.bs.modal', function() {
+                document.body.removeChild(modal);
+            });
         })
         .catch(error => {
-            console.error('Error:', error);
-            document.getElementById('clipboard-content').textContent = 'Error loading content';
+            console.error('Error fetching clipboard content:', error);
+            alert('Error loading clipboard content. Please try again.');
         });
 }
 
@@ -87,30 +84,47 @@ function fetchClipboardContent(event) {
  * Refresh OMIFI status without reloading the page
  */
 function refreshStatus() {
-    const toggleButton = document.getElementById('toggle-omifi');
-    const statusText = document.getElementById('status-text');
-    const statusIndicator = document.querySelector('.status-indicator');
-    
     fetch('/status')
         .then(response => response.json())
         .then(data => {
+            const statusDot = document.querySelector('.status-dot');
+            const statusText = document.querySelector('.status-text');
+            const statusButton = document.querySelector('.status-indicator a.btn');
+            
             if (data.running) {
-                statusText.textContent = 'OMIFI is running';
-                statusIndicator.classList.remove('status-stopped');
-                statusIndicator.classList.add('status-running');
-                toggleButton.textContent = 'Stop OMIFI';
-                toggleButton.classList.remove('btn-success');
-                toggleButton.classList.add('btn-danger');
+                statusDot.classList.remove('inactive');
+                statusDot.classList.add('active');
+                statusText.textContent = 'Running';
+                
+                if (statusButton) {
+                    statusButton.textContent = 'Stop';
+                    statusButton.classList.remove('btn-outline-success');
+                    statusButton.classList.add('btn-outline-danger');
+                    statusButton.href = '/stop';
+                }
             } else {
-                statusText.textContent = 'OMIFI is stopped';
-                statusIndicator.classList.remove('status-running');
-                statusIndicator.classList.add('status-stopped');
-                toggleButton.textContent = 'Start OMIFI';
-                toggleButton.classList.remove('btn-danger');
-                toggleButton.classList.add('btn-success');
+                statusDot.classList.remove('active');
+                statusDot.classList.add('inactive');
+                statusText.textContent = 'Stopped';
+                
+                if (statusButton) {
+                    statusButton.textContent = 'Start';
+                    statusButton.classList.remove('btn-outline-danger');
+                    statusButton.classList.add('btn-outline-success');
+                    statusButton.href = '/start';
+                }
             }
         })
         .catch(error => {
-            console.error('Error:', error);
+            console.error('Error fetching status:', error);
         });
+}
+
+/**
+ * Helper function to escape HTML special characters
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }

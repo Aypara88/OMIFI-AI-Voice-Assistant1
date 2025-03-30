@@ -1,0 +1,56 @@
+/* OMIFI Assistant Dashboard Styles */
+
+/* Status indicators */
+.status-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.status-dot.active {
+    background-color: var(--bs-success);
+    box-shadow: 0 0 8px var(--bs-success);
+}
+
+.status-dot.inactive {
+    background-color: var(--bs-danger);
+}
+
+/* Features section */
+.features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.feature-item {
+    display: flex;
+    align-items: center;
+    background-color: var(--bs-dark);
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    min-width: 45%;
+}
+
+.feature-icon {
+    color: var(--bs-info);
+    margin-right: 0.75rem;
+}
+
+/* Card hover effects */
+.list-group-item-action {
+    transition: background-color 0.2s ease;
+}
+
+.list-group-item-action:hover {
+    background-color: var(--bs-dark);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .feature-item {
+        min-width: 100%;
+    }
+}

@@ -3,13 +3,13 @@ Voice recognition module for the OMIFI assistant.
 """
 
 import os
+import sys
 import time
 import queue
 import logging
 import threading
+from datetime import datetime
 import speech_recognition as sr
-
-logger = logging.getLogger(__name__)
 
 class VoiceRecognizer(threading.Thread):
     """
@@ -25,141 +25,150 @@ class VoiceRecognizer(threading.Thread):
             command_processor: CommandProcessor instance to handle detected commands
             wake_word: The wake word/phrase to listen for (default: "hey omifi")
         """
-        threading.Thread.__init__(self)
-        self.daemon = True
-        
+        super().__init__(daemon=True)
+        self.logger = logging.getLogger(__name__)
         self.command_processor = command_processor
         self.wake_word = wake_word.lower()
-        
-        # Initialize speech recognizer
-        self.recognizer = sr.Recognizer()
-        
-        # Adjust for ambient noise level
-        self.recognizer.dynamic_energy_threshold = True
-        self.recognizer.energy_threshold = 4000
-        
-        # Queue for handling commands
+        self.paused = False
+        self.stopped = False
         self.command_queue = queue.Queue()
         
-        # Start a separate thread for processing commands
-        self.command_thread = threading.Thread(target=self._process_command_queue)
-        self.command_thread.daemon = True
-        self.command_thread.start()
+        # Initialize the recognizer
+        try:
+            self.recognizer = sr.Recognizer()
+            
+            # Adjust for ambient noise to improve recognition (optional)
+            self.recognizer.dynamic_energy_threshold = True
+            self.recognizer.energy_threshold = 4000  # Adjust based on testing
+            self.recognizer.pause_threshold = 0.8    # Time of silence to consider end of phrase
+            
+            # Create a command processing thread
+            self.command_thread = threading.Thread(target=self._process_command_queue, daemon=True)
+            self.command_thread.start()
+            
+            self.logger.info("Voice recognizer initialized successfully")
         
-        # Control flags
-        self.running = True
-        self.paused = False
-        
-        logger.info("Voice recognizer initialized")
+        except Exception as e:
+            self.logger.error(f"Error initializing voice recognizer: {e}")
+            self.recognizer = None
     
     def run(self):
         """Main loop that continually listens for the wake word followed by commands."""
-        logger.info("Voice recognition started")
+        if not self.recognizer:
+            self.logger.error("Voice recognizer not available. Cannot start listening.")
+            return
         
-        # Give the text-to-speech engine a moment to speak the welcome message
-        time.sleep(2)
+        self.logger.info("Voice recognition thread started")
         
-        while self.running:
+        while not self.stopped:
             if self.paused:
-                time.sleep(0.5)
+                time.sleep(0.5)  # Sleep briefly when paused
                 continue
-                
+            
+            # Use the microphone as audio source
             try:
-                # Use the microphone as source
                 with sr.Microphone() as source:
-                    logger.debug("Listening for wake word...")
+                    self.logger.debug("Listening for wake word...")
                     
-                    # Listen for audio
-                    audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=5)
+                    # Adjust for ambient noise
+                    self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                    
+                    # Listen for speech
+                    audio = self.recognizer.listen(source, timeout=None, phrase_time_limit=5)
                     
                     try:
-                        # Convert speech to text
+                        # Convert speech to text using Google Speech Recognition
                         text = self.recognizer.recognize_google(audio).lower()
-                        logger.debug(f"Heard: {text}")
+                        self.logger.debug(f"Detected: {text}")
                         
-                        # Check for wake word
+                        # Check if wake word is detected
                         if self.wake_word in text:
-                            logger.info("Wake word detected")
+                            self.logger.info(f"Wake word detected: {text}")
                             
-                            # Play acknowledgment
-                            self.command_processor.text_to_speech.speak("Yes?", block=False)
-                            
-                            # Listen for command
-                            self._listen_for_command()
+                            # Extract any command included after the wake word
+                            command_text = text.split(self.wake_word, 1)[-1].strip()
+                            if command_text:
+                                # If command was included with wake word
+                                self.logger.info(f"Command included with wake word: {command_text}")
+                                self.command_queue.put(command_text)
+                            else:
+                                # Otherwise listen specifically for a command
+                                self._listen_for_command()
                     
                     except sr.UnknownValueError:
                         # Speech was unintelligible
                         pass
-                        
                     except sr.RequestError as e:
-                        logger.error(f"Could not request results from Google Speech Recognition service: {e}")
-                        time.sleep(1)  # Wait before trying again
+                        self.logger.error(f"Speech recognition service error: {e}")
+                    except Exception as e:
+                        self.logger.error(f"Error processing speech: {e}")
             
             except Exception as e:
-                logger.error(f"Error in voice recognition: {e}")
-                time.sleep(1)  # Wait before trying again
+                self.logger.error(f"Error accessing microphone: {e}")
+                time.sleep(1)  # Wait before retrying
     
     def _listen_for_command(self):
         """Listen for a command after the wake word is detected."""
         try:
             with sr.Microphone() as source:
-                # Reduce the listening time for commands
+                self.logger.info("Listening for command...")
+                
+                # Adjust for ambient noise
+                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                
+                # Listen for speech with shorter timeout
                 audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=10)
                 
                 try:
-                    # Convert speech to text
-                    command = self.recognizer.recognize_google(audio).lower()
-                    logger.info(f"Command detected: {command}")
+                    # Convert speech to text using Google Speech Recognition
+                    text = self.recognizer.recognize_google(audio).lower()
+                    self.logger.info(f"Command detected: {text}")
                     
-                    # Add command to queue
-                    self.command_queue.put(command)
-                    
+                    # Add command to processing queue
+                    self.command_queue.put(text)
+                
                 except sr.UnknownValueError:
-                    # Command was unintelligible
-                    self.command_processor.text_to_speech.speak("Sorry, I didn't catch that", block=False)
-                    
+                    self.logger.info("Command not understood")
                 except sr.RequestError as e:
-                    logger.error(f"Could not request results from Google Speech Recognition service: {e}")
-                    self.command_processor.text_to_speech.speak("Sorry, I'm having trouble understanding you", block=False)
+                    self.logger.error(f"Speech recognition service error: {e}")
+                except Exception as e:
+                    self.logger.error(f"Error processing command: {e}")
         
         except Exception as e:
-            logger.error(f"Error listening for command: {e}")
+            self.logger.error(f"Error accessing microphone for command: {e}")
     
     def _process_command_queue(self):
         """Process commands in the queue to avoid blocking the listening thread."""
-        while True:
+        while not self.stopped:
             try:
-                # Get command from queue
-                command = self.command_queue.get(block=True)
+                # Get command from queue (blocks until an item is available)
+                command = self.command_queue.get(timeout=1)
                 
                 # Process the command
-                if not self.command_processor.process_command(command):
-                    # If no command was recognized, say so
-                    self.command_processor.text_to_speech.speak("I'm not sure what you want me to do", block=False)
+                if command:
+                    self.command_processor.process_command(command)
                 
-                # Mark task as done
+                # Mark queue item as processed
                 self.command_queue.task_done()
-                
-                # Small delay between commands
-                time.sleep(0.5)
-                
+            
+            except queue.Empty:
+                # Queue timeout, continue polling
+                pass
             except Exception as e:
-                logger.error(f"Error processing command: {e}")
-                time.sleep(0.1)  # Avoid CPU spinning if there's an error
+                self.logger.error(f"Error processing command queue: {e}")
     
     def pause(self):
         """Pause voice recognition."""
-        if not self.paused:
-            self.paused = True
-            logger.info("Voice recognition paused")
+        self.paused = True
+        self.logger.info("Voice recognition paused")
     
     def resume(self):
         """Resume voice recognition."""
-        if self.paused:
-            self.paused = False
-            logger.info("Voice recognition resumed")
+        self.paused = False
+        self.logger.info("Voice recognition resumed")
     
     def stop(self):
         """Stop voice recognition thread."""
-        self.running = False
-        logger.info("Voice recognition stopped")
+        self.logger.info("Stopping voice recognition...")
+        self.stopped = True
+        self.paused = True  # Also pause to prevent any new recognitions during shutdown

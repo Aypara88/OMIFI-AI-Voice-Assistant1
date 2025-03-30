@@ -1,110 +1,132 @@
 """
-OMIFI Voice Assistant Desktop Application
+OMIFI Voice Assistant - Main Application Entry Point
 
-A desktop AI voice assistant that operates in the background and activates when
-called with the wake word "Hey OMIFI".
+This file serves as the entry point for both the desktop application
+and the web interface. It imports the Flask app from app.py for the web interface.
 """
 
 import os
 import sys
-import signal
 import logging
+import signal
 import threading
-from PyQt5.QtWidgets import QApplication
-import time
+import atexit
+from datetime import datetime
 
-from omifi.storage import Storage
-from omifi.command_processor import CommandProcessor
-from omifi.voice_recognition import VoiceRecognizer
-from omifi.ui.system_tray import OmifiSystemTray
+# Import the Flask app for the web interface
+from app import app as flask_app
 
-# Setup logging
-def create_assets_directory():
-    """Create the assets directory structure if it doesn't exist."""
-    # Create base directory
-    base_dir = os.path.expanduser("~/.omifi")
-    os.makedirs(base_dir, exist_ok=True)
-    
-    # Create logs directory
-    logs_dir = os.path.join(base_dir, "logs")
-    os.makedirs(logs_dir, exist_ok=True)
-    
-    # Create assets directory
-    assets_dir = os.path.join(base_dir, "assets")
-    os.makedirs(assets_dir, exist_ok=True)
-    
-    # Create screenshots directory
-    screenshots_dir = os.path.join(base_dir, "screenshots")
-    os.makedirs(screenshots_dir, exist_ok=True)
-    
-    # Create clipboard directory
-    clipboard_dir = os.path.join(base_dir, "clipboard")
-    os.makedirs(clipboard_dir, exist_ok=True)
-    
-    return base_dir, logs_dir
+# Create a flag to track if running as desktop app or web server
+is_desktop_app = __name__ == "__main__"
 
-def setup_logging(logs_dir):
+def setup_logging():
     """Setup logging configuration."""
-    log_file = os.path.join(logs_dir, "omifi.log")
-    
+    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        format=log_format,
         handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler()
+            logging.StreamHandler(sys.stdout)
         ]
     )
+    
+    logger = logging.getLogger(__name__)
+    return logger
+
+def create_assets_directory():
+    """Create the assets directory structure if it doesn't exist."""
+    base_dir = os.path.expanduser("~/.omifi")
+    screenshots_dir = os.path.join(base_dir, "screenshots")
+    clipboard_dir = os.path.join(base_dir, "clipboard")
+    
+    for directory in [base_dir, screenshots_dir, clipboard_dir]:
+        if not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
 
 def signal_handler(sig, frame):
     """Handle signals to properly exit the application."""
-    logging.info("Shutting down OMIFI assistant...")
+    logger.info("Signal received, shutting down...")
     sys.exit(0)
 
-def main():
-    """Initialize and run the OMIFI voice assistant application."""
-    # Create directories
-    base_dir, logs_dir = create_assets_directory()
+def run_desktop_app():
+    """Initialize and run the OMIFI voice assistant desktop application."""
+    logger.info("Starting OMIFI desktop application...")
     
+    # Import PyQt5 components here to avoid loading them when running as a web server
+    try:
+        from PyQt5.QtWidgets import QApplication
+        
+        # Import OMIFI components
+        from omifi.storage import Storage
+        from omifi.clipboard import ClipboardManager
+        from omifi.screenshot import ScreenshotManager
+        from omifi.text_to_speech import TextToSpeech
+        from omifi.command_processor import CommandProcessor
+        from omifi.voice_recognition import VoiceRecognizer
+        from omifi.ui.system_tray import OmifiSystemTray
+        
+        # Create application instance
+        app = QApplication(sys.argv)
+        app.setApplicationName("OMIFI Assistant")
+        app.setQuitOnLastWindowClosed(False)
+        
+        # Initialize components
+        storage = Storage()
+        clipboard_manager = ClipboardManager(storage)
+        screenshot_manager = ScreenshotManager(storage)
+        text_to_speech = TextToSpeech()
+        
+        # Initialize command processor
+        command_processor = CommandProcessor(storage)
+        command_processor.clipboard_manager = clipboard_manager
+        command_processor.screenshot_manager = screenshot_manager
+        command_processor.text_to_speech = text_to_speech
+        
+        # Initialize voice recognizer
+        voice_recognizer = VoiceRecognizer(command_processor)
+        voice_recognizer.daemon = True
+        voice_recognizer.start()
+        
+        # Initialize system tray
+        tray = OmifiSystemTray(app, voice_recognizer, storage)
+        tray.show()
+        
+        # Clean up on exit
+        def cleanup():
+            logger.info("Cleaning up resources...")
+            if voice_recognizer:
+                voice_recognizer.stop()
+        
+        atexit.register(cleanup)
+        
+        # Start the application event loop
+        logger.info("OMIFI desktop application started")
+        sys.exit(app.exec_())
+    
+    except ImportError as e:
+        logger.error(f"Failed to import PyQt5 components: {e}")
+        logger.error("Desktop application requires PyQt5. Please install it with 'pip install PyQt5'")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Error starting desktop application: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
     # Setup logging
-    setup_logging(logs_dir)
+    logger = setup_logging()
     
-    # Set signal handlers
+    # Create required directories
+    create_assets_directory()
+    
+    # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Create QApplication
-    app = QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(False)
+    # Run the desktop application
+    run_desktop_app()
+else:
+    # When imported as a module (e.g., by Flask), setup logging
+    logger = setup_logging()
     
-    # Initialize storage
-    storage = Storage(base_dir)
-    
-    # Initialize command processor
-    command_processor = CommandProcessor(storage)
-    
-    # Welcome message
-    command_processor.text_to_speech.speak("OMIFI assistant is starting", block=True)
-    
-    # Initialize voice recognizer
-    voice_recognizer = VoiceRecognizer(command_processor)
-    
-    # Start voice recognition in a background thread
-    voice_recognizer.start()
-    
-    # Create system tray
-    tray = OmifiSystemTray(app, voice_recognizer, storage)
-    
-    # Show welcome message
-    tray.showMessage(
-        "OMIFI Voice Assistant",
-        "OMIFI is now running in the background. Say 'Hey OMIFI' to activate.",
-        tray.Information,
-        5000
-    )
-    
-    # Start Qt event loop
-    sys.exit(app.exec_())
-
-if __name__ == "__main__":
-    main()
+    # Create required directories
+    create_assets_directory()

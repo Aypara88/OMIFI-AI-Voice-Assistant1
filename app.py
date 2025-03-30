@@ -5,162 +5,104 @@ A Flask web application that serves as a web dashboard for the OMIFI assistant.
 """
 
 import os
+import sys
 import json
 import logging
 import subprocess
-import threading
+import time
 from datetime import datetime
-
-from flask import Flask, render_template, jsonify, send_file, redirect, url_for
+from flask import Flask, render_template, jsonify, send_file, request, redirect, url_for
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get("SESSION_SECRET", "omifi_dev_secret")
+app.secret_key = os.environ.get("SESSION_SECRET", "omifi-dev-secret-key")
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
+# Initialize logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Constants
-METADATA_PATH = os.path.expanduser("~/.omifi/metadata.json")
-SCREENSHOTS_DIR = os.path.expanduser("~/.omifi/screenshots")
-CLIPBOARD_DIR = os.path.expanduser("~/.omifi/clipboard")
-LOG_FILE = os.path.expanduser("~/.omifi/logs/omifi.log")
-
-# Status tracking
-omifi_process = None
 
 def get_omifi_status():
     """Check if the OMIFI desktop application is running."""
-    global omifi_process
-    
-    if omifi_process and omifi_process.poll() is None:
-        return True
-    
-    # Try to find OMIFI process using pgrep
     try:
-        result = subprocess.run(
-            ["pgrep", "-f", "python.*main.py"],
-            capture_output=True,
-            text=True
-        )
-        
-        return result.returncode == 0 and result.stdout.strip() != ""
+        # Check for running OMIFI process (platform-specific)
+        if sys.platform == 'win32':
+            # Windows
+            cmd = 'tasklist /FI "IMAGENAME eq python.exe" /FO CSV'
+            output = subprocess.check_output(cmd, shell=True).decode('utf-8')
+            return "omifi" in output.lower() or "main.py" in output.lower()
+        else:
+            # Linux/macOS
+            cmd = 'ps aux | grep -i "python.*main.py" | grep -v grep'
+            result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE)
+            return result.returncode == 0
     except Exception as e:
         logger.error(f"Error checking OMIFI status: {e}")
         return False
 
 def load_metadata():
     """Load the OMIFI metadata file."""
-    try:
-        if os.path.exists(METADATA_PATH):
-            with open(METADATA_PATH, 'r') as f:
+    metadata_path = os.path.expanduser("~/.omifi/metadata.json")
+    if os.path.exists(metadata_path):
+        try:
+            with open(metadata_path, 'r') as f:
                 return json.load(f)
-    except Exception as e:
-        logger.error(f"Error loading metadata: {e}")
+        except (json.JSONDecodeError, IOError) as e:
+            logger.error(f"Error loading metadata: {e}")
     
-    # Default metadata structure
-    return {
-        "screenshots": [],
-        "clipboard": []
-    }
+    # Return empty metadata if file doesn't exist or can't be loaded
+    return {"screenshots": [], "clipboard": []}
 
 @app.route('/')
 def index():
     """Render the main dashboard page."""
+    is_running = get_omifi_status()
     metadata = load_metadata()
+    screenshots = metadata.get("screenshots", [])
+    clipboard = metadata.get("clipboard", [])
     
-    # Sort screenshots by timestamp (newest first)
-    screenshots = sorted(
-        metadata.get("screenshots", []),
-        key=lambda x: x.get("timestamp", ""),
-        reverse=True
-    )[:20]  # Limit to 20 most recent
-    
-    # Sort clipboard items by timestamp (newest first)
-    clipboard_items = sorted(
-        metadata.get("clipboard", []),
-        key=lambda x: x.get("timestamp", ""),
-        reverse=True
-    )[:50]  # Limit to 50 most recent
-    
-    # Format timestamps
-    for item in screenshots + clipboard_items:
-        if "timestamp" in item:
-            try:
-                dt = datetime.fromisoformat(item["timestamp"])
-                item["formatted_time"] = dt.strftime("%Y-%m-%d %H:%M:%S")
-            except:
-                item["formatted_time"] = item["timestamp"]
-    
-    # Check OMIFI status
-    omifi_running = get_omifi_status()
+    # Sort by timestamp (newest first)
+    screenshots = sorted(screenshots, key=lambda x: x.get("timestamp", ""), reverse=True)
+    clipboard = sorted(clipboard, key=lambda x: x.get("timestamp", ""), reverse=True)
     
     return render_template(
         'dashboard.html',
-        screenshots=screenshots,
-        clipboard_items=clipboard_items,
-        omifi_running=omifi_running
+        is_running=is_running,
+        screenshots=screenshots[:10],  # Limit to 10 most recent
+        clipboard=clipboard[:10]       # Limit to 10 most recent
     )
 
-@app.route('/start', methods=['POST'])
+@app.route('/start')
 def start_omifi():
     """Start the OMIFI desktop application."""
-    global omifi_process
+    if not get_omifi_status():
+        try:
+            # Start OMIFI in the background
+            subprocess.Popen([sys.executable, "main.py"], 
+                             stdout=subprocess.PIPE, 
+                             stderr=subprocess.PIPE,
+                             start_new_session=True)
+            time.sleep(2)  # Give it time to start
+        except Exception as e:
+            logger.error(f"Error starting OMIFI: {e}")
     
-    if get_omifi_status():
-        return jsonify({"status": "already_running"})
-    
-    try:
-        # Start OMIFI in the background
-        omifi_process = subprocess.Popen(
-            ["python", "main.py"],
-            start_new_session=True
-        )
-        
-        # Give it a moment to start
-        import time
-        time.sleep(2)
-        
-        status = "started" if get_omifi_status() else "failed"
-        return jsonify({"status": status})
-    
-    except Exception as e:
-        logger.error(f"Error starting OMIFI: {e}")
-        return jsonify({"status": "failed", "error": str(e)})
+    return redirect(url_for('index'))
 
-@app.route('/stop', methods=['POST'])
+@app.route('/stop')
 def stop_omifi():
     """Stop the OMIFI desktop application."""
-    global omifi_process
+    if get_omifi_status():
+        try:
+            # This is a simplistic approach - in a real app, you'd use a proper IPC mechanism
+            if sys.platform == 'win32':
+                # Windows
+                subprocess.run(["taskkill", "/F", "/IM", "python.exe", "/T"], check=False)
+            else:
+                # Linux/macOS
+                subprocess.run("pkill -f 'python.*main.py'", shell=True, check=False)
+        except Exception as e:
+            logger.error(f"Error stopping OMIFI: {e}")
     
-    if not get_omifi_status():
-        return jsonify({"status": "not_running"})
-    
-    try:
-        # Try to terminate gracefully first
-        subprocess.run(
-            ["pkill", "-f", "python.*main.py"],
-            check=False
-        )
-        
-        # Give it a moment to stop
-        import time
-        time.sleep(1)
-        
-        # Force kill if still running
-        if get_omifi_status():
-            subprocess.run(
-                ["pkill", "-9", "-f", "python.*main.py"],
-                check=False
-            )
-        
-        omifi_process = None
-        return jsonify({"status": "stopped"})
-    
-    except Exception as e:
-        logger.error(f"Error stopping OMIFI: {e}")
-        return jsonify({"status": "failed", "error": str(e)})
+    return redirect(url_for('index'))
 
 @app.route('/status')
 def status():
@@ -171,36 +113,31 @@ def status():
 def get_clipboard(filepath):
     """Get clipboard content by filepath."""
     try:
-        # Ensure the path is within the clipboard directory
-        full_path = os.path.join(CLIPBOARD_DIR, os.path.basename(filepath))
-        
-        if not os.path.exists(full_path):
-            return "File not found", 404
-            
-        with open(full_path, 'r') as f:
-            content = f.read()
-            
-        return content
-    
+        fullpath = os.path.join(os.path.expanduser("~/.omifi/clipboard"), filepath)
+        # Check if file exists and is within the clipboard directory
+        if os.path.exists(fullpath) and os.path.commonpath([fullpath, os.path.expanduser("~/.omifi/clipboard")]) == os.path.expanduser("~/.omifi/clipboard"):
+            with open(fullpath, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return content
+        else:
+            return "File not found or invalid path", 404
     except Exception as e:
-        logger.error(f"Error reading clipboard content: {e}")
-        return f"Error: {str(e)}", 500
+        logger.error(f"Error retrieving clipboard content: {e}")
+        return str(e), 500
 
-@app.route('/screenshot/<path:filepath>')
+@app.route('/screenshots/<path:filepath>')
 def get_screenshot(filepath):
     """Serve screenshot images."""
     try:
-        # Ensure the path is within the screenshots directory
-        full_path = os.path.join(SCREENSHOTS_DIR, os.path.basename(filepath))
-        
-        if not os.path.exists(full_path):
-            return "Image not found", 404
-            
-        return send_file(full_path)
-    
+        fullpath = os.path.join(os.path.expanduser("~/.omifi/screenshots"), filepath)
+        # Check if file exists and is within the screenshots directory
+        if os.path.exists(fullpath) and os.path.commonpath([fullpath, os.path.expanduser("~/.omifi/screenshots")]) == os.path.expanduser("~/.omifi/screenshots"):
+            return send_file(fullpath)
+        else:
+            return "File not found or invalid path", 404
     except Exception as e:
-        logger.error(f"Error serving screenshot: {e}")
-        return f"Error: {str(e)}", 500
+        logger.error(f"Error retrieving screenshot: {e}")
+        return str(e), 500
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)

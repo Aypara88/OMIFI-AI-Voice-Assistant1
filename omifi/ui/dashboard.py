@@ -3,18 +3,18 @@ Dashboard interface for the OMIFI assistant.
 """
 
 import os
+import sys
 import logging
+import threading
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QTabWidget, QVBoxLayout, QHBoxLayout,
-    QListWidget, QListWidgetItem, QLabel, QPushButton, QSplitter,
-    QTextEdit, QGridLayout, QScrollArea
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+    QLabel, QTabWidget, QListWidget, QListWidgetItem, QTextEdit,
+    QSplitter, QFileDialog, QMessageBox
 )
-from PyQt5.QtGui import QPixmap, QIcon
+from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtCore import Qt, QSize
 
-from .resources import get_icon_path
-
-logger = logging.getLogger(__name__)
+from omifi.ui.resources import get_icon_path
 
 class OmifiDashboard(QMainWindow):
     """
@@ -33,121 +33,146 @@ class OmifiDashboard(QMainWindow):
             text_to_speech: TextToSpeech instance
         """
         super().__init__()
-        
+        self.logger = logging.getLogger(__name__)
         self.storage = storage
         self.clipboard_manager = clipboard_manager
         self.screenshot_manager = screenshot_manager
         self.text_to_speech = text_to_speech
         
+        # Set window properties
+        self.setWindowTitle("OMIFI Assistant Dashboard")
+        self.setMinimumSize(800, 600)
+        
+        # Load icon
+        icon_path = get_icon_path("omifi_icon.png")
+        if icon_path and os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+        
         # Initialize UI
         self.init_ui()
         
-        # Load data
+        # Refresh data
         self.refresh_data()
-        
-        logger.info("Dashboard initialized")
     
     def init_ui(self):
         """Initialize the user interface."""
-        # Set window properties
-        self.setWindowTitle("OMIFI Voice Assistant Dashboard")
-        self.setMinimumSize(800, 600)
-        
-        # Set window icon
-        icon_path = get_icon_path("omifi_icon.svg")
-        if icon_path:
-            self.setWindowIcon(QIcon(icon_path))
-        
         # Create central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        # Create main layout
-        main_layout = QVBoxLayout()
-        central_widget.setLayout(main_layout)
+        # Set layout
+        main_layout = QVBoxLayout(central_widget)
         
-        # Create header
+        # Add header
         header_layout = QHBoxLayout()
-        logo_label = QLabel("OMIFI Voice Assistant")
-        logo_label.setStyleSheet("font-size: 18px; font-weight: bold;")
-        header_layout.addWidget(logo_label)
-        header_layout.addStretch()
+        header_label = QLabel("OMIFI Assistant Dashboard")
+        header_label.setStyleSheet("font-size: 18px; font-weight: bold;")
+        header_layout.addWidget(header_label)
+        header_layout.addStretch(1)
         
-        # Create action buttons
-        screenshot_button = QPushButton("Take Screenshot")
-        screenshot_button.clicked.connect(self.take_screenshot)
-        
-        clipboard_button = QPushButton("Sense Clipboard")
-        clipboard_button.clicked.connect(self.sense_clipboard)
-        
-        header_layout.addWidget(screenshot_button)
-        header_layout.addWidget(clipboard_button)
+        # Add refresh button
+        refresh_button = QPushButton("Refresh")
+        refresh_button.clicked.connect(self.refresh_data)
+        header_layout.addWidget(refresh_button)
         
         main_layout.addLayout(header_layout)
         
-        # Create tab widget
-        self.tab_widget = QTabWidget()
+        # Add tab widget
+        self.tabs = QTabWidget()
         
-        # Setup tabs
+        # Setup screenshots tab
+        self.screenshots_tab = QWidget()
         self.setup_screenshots_tab()
-        self.setup_clipboard_tab()
+        self.tabs.addTab(self.screenshots_tab, "Screenshots")
         
-        main_layout.addWidget(self.tab_widget)
+        # Setup clipboard tab
+        self.clipboard_tab = QWidget()
+        self.setup_clipboard_tab()
+        self.tabs.addTab(self.clipboard_tab, "Clipboard")
+        
+        main_layout.addWidget(self.tabs)
     
     def setup_screenshots_tab(self):
         """Set up the screenshots tab UI."""
-        # Create tab widget
-        screenshots_tab = QWidget()
-        screenshots_layout = QVBoxLayout()
-        screenshots_tab.setLayout(screenshots_layout)
+        # Create layout
+        screenshots_layout = QVBoxLayout(self.screenshots_tab)
         
-        # Create grid layout for screenshots
-        self.screenshots_grid = QGridLayout()
+        # Create controls
+        controls_layout = QHBoxLayout()
         
-        # Create scroll area
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_widget = QWidget()
-        scroll_widget.setLayout(self.screenshots_grid)
-        scroll_area.setWidget(scroll_widget)
+        # Add screenshot button
+        screenshot_button = QPushButton("Take Screenshot")
+        screenshot_button.clicked.connect(self.take_screenshot)
+        controls_layout.addWidget(screenshot_button)
         
-        screenshots_layout.addWidget(scroll_area)
+        # Add spacer
+        controls_layout.addStretch(1)
         
-        # Add tab
-        self.tab_widget.addTab(screenshots_tab, "Screenshots")
+        screenshots_layout.addLayout(controls_layout)
+        
+        # Create splitter for list and preview
+        splitter = QSplitter(Qt.Horizontal)
+        
+        # Add list of screenshots
+        self.screenshots_list = QListWidget()
+        self.screenshots_list.setMinimumWidth(250)
+        self.screenshots_list.itemDoubleClicked.connect(
+            lambda item: self.open_screenshot(item.data(Qt.UserRole))
+        )
+        splitter.addWidget(self.screenshots_list)
+        
+        # Add preview area
+        self.screenshot_preview = QLabel("Select a screenshot to preview")
+        self.screenshot_preview.setAlignment(Qt.AlignCenter)
+        self.screenshot_preview.setStyleSheet("background-color: #f0f0f0;")
+        splitter.addWidget(self.screenshot_preview)
+        
+        # Set initial splitter sizes
+        splitter.setSizes([250, 550])
+        
+        screenshots_layout.addWidget(splitter)
     
     def setup_clipboard_tab(self):
         """Set up the clipboard tab UI."""
-        # Create tab widget
-        clipboard_tab = QWidget()
-        clipboard_layout = QVBoxLayout()
-        clipboard_tab.setLayout(clipboard_layout)
+        # Create layout
+        clipboard_layout = QVBoxLayout(self.clipboard_tab)
         
-        # Create splitter
+        # Create controls
+        controls_layout = QHBoxLayout()
+        
+        # Add sense clipboard button
+        sense_button = QPushButton("Sense Clipboard")
+        sense_button.clicked.connect(self.sense_clipboard)
+        controls_layout.addWidget(sense_button)
+        
+        # Add read clipboard button
+        read_button = QPushButton("Read Aloud")
+        read_button.clicked.connect(self.read_clipboard_aloud)
+        controls_layout.addWidget(read_button)
+        
+        # Add spacer
+        controls_layout.addStretch(1)
+        
+        clipboard_layout.addLayout(controls_layout)
+        
+        # Create splitter for list and content
         splitter = QSplitter(Qt.Horizontal)
         
-        # Create list widget
+        # Add list of clipboard items
         self.clipboard_list = QListWidget()
+        self.clipboard_list.setMinimumWidth(250)
         self.clipboard_list.currentItemChanged.connect(self.show_clipboard_content)
         splitter.addWidget(self.clipboard_list)
         
-        # Create content viewer
-        self.clipboard_viewer = QTextEdit()
-        self.clipboard_viewer.setReadOnly(True)
-        splitter.addWidget(self.clipboard_viewer)
+        # Add content area
+        self.clipboard_content = QTextEdit()
+        self.clipboard_content.setReadOnly(True)
+        splitter.addWidget(self.clipboard_content)
         
-        # Set splitter sizes
-        splitter.setSizes([200, 600])
+        # Set initial splitter sizes
+        splitter.setSizes([250, 550])
         
         clipboard_layout.addWidget(splitter)
-        
-        # Add read aloud button
-        read_button = QPushButton("Read Aloud")
-        read_button.clicked.connect(self.read_clipboard_aloud)
-        clipboard_layout.addWidget(read_button)
-        
-        # Add tab
-        self.tab_widget.addTab(clipboard_tab, "Clipboard")
     
     def refresh_data(self):
         """Refresh the displayed data."""
@@ -156,191 +181,195 @@ class OmifiDashboard(QMainWindow):
     
     def refresh_screenshots(self):
         """Refresh the screenshots list."""
-        # Clear existing layout
-        while self.screenshots_grid.count():
-            item = self.screenshots_grid.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
+        # Clear the list
+        self.screenshots_list.clear()
         
-        # Get recent screenshots
-        screenshots = self.storage.get_screenshots(20)
+        # Get screenshots from storage
+        screenshots = self.storage.get_screenshots()
         
-        if not screenshots:
-            # Show message if no screenshots
-            label = QLabel("No screenshots available. Say 'Hey OMIFI, take a screenshot' to capture your screen.")
-            label.setAlignment(Qt.AlignCenter)
-            self.screenshots_grid.addWidget(label, 0, 0)
-            return
-        
-        # Add screenshots to grid
-        row, col = 0, 0
-        max_cols = 3
-        
-        for i, screenshot in enumerate(screenshots):
-            # Create widget for screenshot
-            widget = QWidget()
-            layout = QVBoxLayout()
-            widget.setLayout(layout)
+        # Add items to list
+        for screenshot in screenshots:
+            item = QListWidgetItem()
+            filepath = os.path.join(self.storage.screenshots_dir, screenshot.get("filepath", ""))
+            timestamp = screenshot.get("timestamp", "").replace("T", " ").split(".")[0]
             
-            # Create label for image
-            img_label = QLabel()
-            img_label.setFixedSize(250, 180)
-            img_label.setAlignment(Qt.AlignCenter)
-            img_label.setStyleSheet("background-color: #2c2c2c; border-radius: 5px;")
+            item.setText(f"{os.path.basename(filepath)} ({timestamp})")
+            item.setData(Qt.UserRole, filepath)
             
-            # Load image
-            filepath = screenshot.get("filepath")
-            if filepath and os.path.exists(filepath):
-                pixmap = QPixmap(filepath)
-                pixmap = pixmap.scaled(
-                    250, 180,
-                    Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation
-                )
-                img_label.setPixmap(pixmap)
-                
-                # Make label clickable
-                img_label.mousePressEvent = lambda event, path=filepath: self.open_screenshot(path)
-                img_label.setCursor(Qt.PointingHandCursor)
-            
-            layout.addWidget(img_label)
-            
-            # Add timestamp
-            timestamp = screenshot.get("timestamp", "").split("T")[0]
-            label = QLabel(timestamp)
-            label.setAlignment(Qt.AlignCenter)
-            layout.addWidget(label)
-            
-            # Add to grid
-            self.screenshots_grid.addWidget(widget, row, col)
-            
-            # Update row, col
-            col += 1
-            if col >= max_cols:
-                col = 0
-                row += 1
+            self.screenshots_list.addItem(item)
     
     def refresh_clipboard(self):
         """Refresh the clipboard list."""
-        # Clear list
+        # Clear the list
         self.clipboard_list.clear()
         
-        # Get recent clipboard items
-        clipboard_items = self.storage.get_clipboard_items(50)
-        
-        if not clipboard_items:
-            # Add empty message
-            item = QListWidgetItem("No clipboard content available")
-            item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
-            self.clipboard_list.addItem(item)
-            return
+        # Get clipboard items from storage
+        clipboard_items = self.storage.get_clipboard_items()
         
         # Add items to list
         for clip in clipboard_items:
-            # Format timestamp
+            item = QListWidgetItem()
+            filepath = os.path.join(self.storage.clipboard_dir, clip.get("filepath", ""))
             timestamp = clip.get("timestamp", "").replace("T", " ").split(".")[0]
+            content_type = clip.get("type", "text")
             
-            # Create list item
-            item = QListWidgetItem(timestamp)
-            item.setData(Qt.UserRole, clip.get("filepath"))
+            item.setText(f"{content_type.capitalize()} ({timestamp})")
+            item.setData(Qt.UserRole, filepath)
             
             self.clipboard_list.addItem(item)
     
     def show_clipboard_content(self, current, previous):
         """Show the content of the selected clipboard item."""
         if not current:
-            self.clipboard_viewer.clear()
+            self.clipboard_content.clear()
             return
         
-        # Get filepath from item data
         filepath = current.data(Qt.UserRole)
         
-        if not filepath or not os.path.exists(filepath):
-            self.clipboard_viewer.setText("File not found")
-            return
-        
         try:
-            # Read file content
-            with open(filepath, 'r') as f:
+            with open(filepath, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Set content
-            self.clipboard_viewer.setText(content)
-            
+            self.clipboard_content.setText(content)
         except Exception as e:
-            logger.error(f"Error reading clipboard content: {e}")
-            self.clipboard_viewer.setText(f"Error reading content: {e}")
+            self.logger.error(f"Error loading clipboard content: {e}")
+            self.clipboard_content.setText(f"Error loading content: {str(e)}")
     
     def take_screenshot(self):
         """Take a screenshot from the UI."""
-        filepath = self.screenshot_manager.take_screenshot()
-        
-        if filepath:
-            self.text_to_speech.speak("Screenshot saved", block=False)
-            # Refresh after a short delay
-            self.refresh_screenshots()
-        else:
-            self.text_to_speech.speak("Failed to take screenshot", block=False)
+        try:
+            filepath = self.screenshot_manager.take_screenshot()
+            
+            if filepath:
+                self.refresh_screenshots()
+                QMessageBox.information(
+                    self,
+                    "Screenshot Taken",
+                    f"Screenshot saved to {os.path.basename(filepath)}"
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Screenshot Failed",
+                    "Failed to take screenshot"
+                )
+        except Exception as e:
+            self.logger.error(f"Error taking screenshot: {e}")
+            QMessageBox.critical(
+                self,
+                "Screenshot Error",
+                f"Error taking screenshot: {str(e)}"
+            )
     
     def sense_clipboard(self):
         """Sense clipboard from the UI."""
-        content_type, content = self.clipboard_manager.sense_clipboard()
-        
-        if content:
-            self.text_to_speech.speak("Clipboard content saved", block=False)
-            # Refresh after a short delay
-            self.refresh_clipboard()
-        else:
-            self.text_to_speech.speak("No clipboard content found or unchanged", block=False)
+        try:
+            content_type, content = self.clipboard_manager.sense_clipboard()
+            
+            if content and content.strip():
+                self.refresh_clipboard()
+                QMessageBox.information(
+                    self,
+                    "Clipboard Sensed",
+                    "Clipboard content saved"
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    "Clipboard Empty",
+                    "Clipboard is empty or contains non-text content"
+                )
+        except Exception as e:
+            self.logger.error(f"Error sensing clipboard: {e}")
+            QMessageBox.critical(
+                self,
+                "Clipboard Error",
+                f"Error sensing clipboard: {str(e)}"
+            )
     
     def read_clipboard_aloud(self):
         """Read the selected clipboard content aloud."""
+        if not self.text_to_speech:
+            QMessageBox.warning(
+                self,
+                "Text-to-Speech Unavailable",
+                "Text-to-speech functionality is not available"
+            )
+            return
+        
         current_item = self.clipboard_list.currentItem()
         
         if not current_item:
-            self.text_to_speech.speak("No clipboard item selected", block=False)
+            QMessageBox.information(
+                self,
+                "No Selection",
+                "Please select a clipboard item to read"
+            )
             return
         
-        # Get filepath from item data
         filepath = current_item.data(Qt.UserRole)
         
-        if not filepath or not os.path.exists(filepath):
-            self.text_to_speech.speak("Clipboard content not found", block=False)
-            return
-        
         try:
-            # Read file content
-            with open(filepath, 'r') as f:
+            with open(filepath, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Limit content length for speech
-            if len(content) > 500:
-                content = content[:500] + "... (content truncated)"
-            
-            # Speak content
-            self.text_to_speech.speak(f"Clipboard contains: {content}", block=False)
-            
+            if content and content.strip():
+                # Show notification
+                QMessageBox.information(
+                    self,
+                    "Reading Clipboard",
+                    "Reading clipboard content aloud"
+                )
+                
+                # Speak in non-blocking mode
+                self.text_to_speech.speak(content)
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Empty Content",
+                    "The selected clipboard item is empty"
+                )
         except Exception as e:
-            logger.error(f"Error reading clipboard content: {e}")
-            self.text_to_speech.speak("Error reading clipboard content", block=False)
+            self.logger.error(f"Error reading clipboard content: {e}")
+            QMessageBox.critical(
+                self,
+                "Read Error",
+                f"Error reading clipboard content: {str(e)}"
+            )
     
     def open_screenshot(self, filepath):
         """Open the selected screenshot."""
         if not filepath or not os.path.exists(filepath):
-            self.text_to_speech.speak("Screenshot not found", block=False)
+            QMessageBox.warning(
+                self,
+                "File Not Found",
+                "The screenshot file could not be found"
+            )
             return
         
         try:
-            # Try to open with system default viewer
-            if os.name == 'nt':  # Windows
-                os.startfile(filepath)
-            elif os.name == 'posix':  # Linux, macOS
-                import subprocess
-                subprocess.Popen(['xdg-open', filepath])
-            
-            logger.info(f"Opened screenshot: {filepath}")
-            
+            # Try to load and display the screenshot
+            pixmap = QPixmap(filepath)
+            if not pixmap.isNull():
+                # Scale pixmap to fit the preview area while maintaining aspect ratio
+                self.screenshot_preview.setPixmap(
+                    pixmap.scaled(
+                        self.screenshot_preview.width(),
+                        self.screenshot_preview.height(),
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
+                )
+                
+                # Also try to open it with the default viewer
+                self.screenshot_manager.open_last_screenshot()
+            else:
+                self.screenshot_preview.setText("Failed to load screenshot")
         except Exception as e:
-            logger.error(f"Error opening screenshot: {e}")
-            self.text_to_speech.speak("Error opening screenshot", block=False)
+            self.logger.error(f"Error opening screenshot: {e}")
+            self.screenshot_preview.setText(f"Error: {str(e)}")
+            QMessageBox.critical(
+                self,
+                "Screenshot Error",
+                f"Error opening screenshot: {str(e)}"
+            )

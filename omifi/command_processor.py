@@ -3,13 +3,10 @@ Command processor module for the OMIFI assistant.
 """
 
 import os
+import sys
 import logging
 import subprocess
-from .text_to_speech import TextToSpeech
-from .screenshot import ScreenshotManager
-from .clipboard import ClipboardManager
-
-logger = logging.getLogger(__name__)
+from datetime import datetime
 
 class CommandProcessor:
     """
@@ -23,41 +20,36 @@ class CommandProcessor:
         Args:
             storage: Storage instance for accessing stored data
         """
+        self.logger = logging.getLogger(__name__)
         self.storage = storage
         
-        # Initialize text-to-speech
-        self.text_to_speech = TextToSpeech()
+        # References to other components (to be set by the caller)
+        self.clipboard_manager = None
+        self.screenshot_manager = None
+        self.text_to_speech = None
         
-        # Initialize screenshot manager
-        self.screenshot_manager = ScreenshotManager(storage)
-        
-        # Initialize clipboard manager
-        self.clipboard_manager = ClipboardManager(storage)
-        
-        # Command handlers
+        # Define command handlers and their keywords
         self.command_handlers = {
             "screenshot": self._handle_screenshot,
             "take a screenshot": self._handle_screenshot,
             "capture screen": self._handle_screenshot,
             
-            "clipboard": self._handle_sense_clipboard,
             "sense clipboard": self._handle_sense_clipboard,
             "check clipboard": self._handle_sense_clipboard,
+            "what's in clipboard": self._handle_sense_clipboard,
+            "what is in clipboard": self._handle_sense_clipboard,
             
             "read clipboard": self._handle_read_clipboard,
+            "read back clipboard": self._handle_read_clipboard,
             "read the clipboard": self._handle_read_clipboard,
-            "what's in the clipboard": self._handle_read_clipboard,
             
-            "open screenshot": self._handle_open_last_screenshot,
-            "open last screenshot": self._handle_open_last_screenshot,
             "show last screenshot": self._handle_open_last_screenshot,
+            "open last screenshot": self._handle_open_last_screenshot,
+            "display screenshot": self._handle_open_last_screenshot,
             
             "help": self._handle_help,
-            "what can you do": self._handle_help,
-            "commands": self._handle_help
+            "what can you do": self._handle_help
         }
-        
-        logger.info("Command processor initialized")
     
     def process_command(self, text):
         """
@@ -71,82 +63,135 @@ class CommandProcessor:
         """
         if not text:
             return False
-            
-        text = text.lower().strip()
-        logger.debug(f"Processing command: {text}")
         
-        # Check for exact matches
+        # Convert to lowercase for case-insensitive matching
+        text = text.lower().strip()
+        
+        self.logger.info(f"Processing command: {text}")
+        
+        # Check exact matches first
         if text in self.command_handlers:
             return self.command_handlers[text](text)
         
         # Check for partial matches
-        for command, handler in self.command_handlers.items():
-            if command in text:
+        for cmd, handler in self.command_handlers.items():
+            if cmd in text:
                 return handler(text)
-        
-        logger.debug(f"No handler found for command: {text}")
+                
+        # If no command was recognized
+        self.logger.info("Command not recognized")
+        if self.text_to_speech:
+            self.text_to_speech.speak("I'm sorry, I didn't understand that command.")
         return False
     
     def _handle_screenshot(self, text):
         """Handle screenshot command."""
-        self.text_to_speech.speak("Taking a screenshot", block=False)
+        self.logger.info("Taking screenshot")
         
-        filepath = self.screenshot_manager.take_screenshot()
+        if self.text_to_speech:
+            self.text_to_speech.speak("Taking a screenshot")
         
-        if filepath:
-            self.text_to_speech.speak("Screenshot saved", block=False)
-            return True
+        if self.screenshot_manager:
+            filepath = self.screenshot_manager.take_screenshot()
+            if filepath:
+                if self.text_to_speech:
+                    self.text_to_speech.speak("Screenshot captured and saved")
+                return True
+            else:
+                if self.text_to_speech:
+                    self.text_to_speech.speak("Sorry, I couldn't take a screenshot")
         else:
-            self.text_to_speech.speak("Failed to take screenshot", block=False)
-            return False
+            if self.text_to_speech:
+                self.text_to_speech.speak("Screenshot functionality is not available")
+            
+        return False
     
     def _handle_sense_clipboard(self, text):
         """Handle clipboard sensing command."""
-        self.text_to_speech.speak("Checking clipboard", block=False)
+        self.logger.info("Sensing clipboard")
         
-        content_type, content = self.clipboard_manager.sense_clipboard()
+        if self.text_to_speech:
+            self.text_to_speech.speak("Checking clipboard content")
         
-        if content:
-            self.text_to_speech.speak("Clipboard content saved", block=False)
-            return True
+        if self.clipboard_manager:
+            try:
+                content_type, content = self.clipboard_manager.sense_clipboard()
+                
+                if content and content.strip():
+                    preview = content[:100] + "..." if len(content) > 100 else content
+                    if self.text_to_speech:
+                        self.text_to_speech.speak(f"Clipboard contains: {preview}")
+                    return True
+                else:
+                    if self.text_to_speech:
+                        self.text_to_speech.speak("Clipboard is empty or contains non-text content")
+            except Exception as e:
+                self.logger.error(f"Error in clipboard sensing: {e}")
+                if self.text_to_speech:
+                    self.text_to_speech.speak("Error accessing clipboard")
         else:
-            self.text_to_speech.speak("No clipboard content found", block=False)
-            return False
+            if self.text_to_speech:
+                self.text_to_speech.speak("Clipboard functionality is not available")
+            
+        return False
     
     def _handle_read_clipboard(self, text):
         """Handle reading clipboard command."""
+        self.logger.info("Reading clipboard")
+        
+        if not self.clipboard_manager or not self.text_to_speech:
+            if self.text_to_speech:
+                self.text_to_speech.speak("Sorry, clipboard reading is not available")
+            return False
+        
+        # Get the latest clipboard content
         filepath, content = self.storage.get_last_clipboard_content()
         
-        if content:
-            if len(content) > 200:
-                # If content is too long, just read the first part
-                content = content[:200] + "... and more"
-                
-            self.text_to_speech.speak(f"Clipboard contains: {content}", block=False)
+        if content and content.strip():
+            self.text_to_speech.speak("Here's what's in the clipboard:")
+            self.text_to_speech.speak(content)
             return True
         else:
-            self.text_to_speech.speak("No clipboard content available", block=False)
+            self.text_to_speech.speak("There's no text content in the clipboard history")
             return False
     
     def _handle_open_last_screenshot(self, text):
         """Handle opening the last screenshot."""
-        self.text_to_speech.speak("Opening the last screenshot", block=False)
+        self.logger.info("Opening last screenshot")
         
-        if self.screenshot_manager.open_last_screenshot():
-            return True
+        if self.text_to_speech:
+            self.text_to_speech.speak("Opening the last screenshot")
+        
+        if self.screenshot_manager:
+            success = self.screenshot_manager.open_last_screenshot()
+            
+            if success:
+                if self.text_to_speech:
+                    self.text_to_speech.speak("Screenshot opened")
+                return True
+            else:
+                if self.text_to_speech:
+                    self.text_to_speech.speak("Sorry, I couldn't find any screenshots")
         else:
-            self.text_to_speech.speak("No screenshot available", block=False)
-            return False
+            if self.text_to_speech:
+                self.text_to_speech.speak("Screenshot functionality is not available")
+            
+        return False
     
     def _handle_help(self, text):
         """Handle help command."""
-        help_text = """
-        I can help you with the following commands:
-        - Take a screenshot: Captures your screen
-        - Sense clipboard: Saves the current clipboard content
-        - Read clipboard: Reads aloud the saved clipboard content
-        - Open last screenshot: Opens the most recent screenshot
-        """
+        if not self.text_to_speech:
+            return False
         
-        self.text_to_speech.speak(help_text, block=False)
+        self.logger.info("Providing help information")
+        
+        help_text = (
+            "Here are some things you can ask me to do: "
+            "Take a screenshot. "
+            "Check what's in the clipboard. "
+            "Read the clipboard content aloud. "
+            "Show the last screenshot."
+        )
+        
+        self.text_to_speech.speak(help_text)
         return True
