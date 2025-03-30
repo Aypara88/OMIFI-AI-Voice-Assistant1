@@ -556,11 +556,24 @@ function takeScreenshotFromBrowser() {
                         .then(data => {
                             if (data.success) {
                                 showNotification('success', 'Screenshot captured from browser');
-                                // Just reload the page to show the new screenshot
-                                // We don't show QR code automatically for screenshots
-                                setTimeout(() => {
-                                    window.location.reload();
-                                }, 1500);
+                                
+                                // Don't reload immediately - wait for user to see the notification
+                                // We'll handle the reload after a proper delay
+                                if (!data.filepath) {
+                                    // If no filepath was returned, just reload
+                                    setTimeout(() => {
+                                        window.location.reload();
+                                    }, 1500);
+                                } else {
+                                    // Show a button to view the screenshot
+                                    showNotification('info', `
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <div>Screenshot saved!</div>
+                                            <button class="btn btn-sm btn-primary ms-3" 
+                                                onclick="window.location.reload()">View Screenshot</button>
+                                        </div>
+                                    `, 8000);
+                                }
                             } else {
                                 showNotification('danger', data.message || 'Error saving screenshot');
                             }

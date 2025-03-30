@@ -433,15 +433,24 @@ function fallbackServerClipboard() {
             
             // Show QR code popup modal for the new clipboard content
             if (data.filepath) {
+                // Generate QR code
+                if (typeof generateQRCodeForContent === 'function') {
+                    generateQRCodeForContent(data.filepath, 'text');
+                } else {
+                    // Fall back to modal
+                    showNewContentModal('clipboard', data.filepath);
+                }
+                
+                // Add a reload button that user can click when ready
                 setTimeout(() => {
-                    // Generate QR code if available in the WebRTC library
-                    if (typeof generateQRCodeForContent === 'function') {
-                        generateQRCodeForContent(data.filepath, 'text');
-                    } else {
-                        // Fall back to modal
-                        showNewContentModal('clipboard', data.filepath);
-                    }
-                }, 500);
+                    showNotification('info', `
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div>Clipboard content saved! QR code shown above.</div>
+                            <button class="btn btn-sm btn-primary ms-3" 
+                                onclick="window.location.reload()">Refresh Page</button>
+                        </div>
+                    `, 15000);
+                }, 800);
             } else {
                 // Reload the page to show the new clipboard content if no filepath provided
                 setTimeout(() => {
