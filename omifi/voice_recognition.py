@@ -32,6 +32,7 @@ class VoiceRecognizer(threading.Thread):
         self.paused = False
         self.stopped = False
         self.command_queue = queue.Queue()
+        self.microphone_available = False
         
         # Initialize the recognizer
         try:
@@ -42,11 +43,20 @@ class VoiceRecognizer(threading.Thread):
             self.recognizer.energy_threshold = 4000  # Adjust based on testing
             self.recognizer.pause_threshold = 0.8    # Time of silence to consider end of phrase
             
+            # Test if microphone is available
+            try:
+                with sr.Microphone() as source:
+                    self.logger.info("Microphone detected")
+                    self.microphone_available = True
+            except Exception as mic_error:
+                self.logger.warning(f"Microphone not available: {mic_error}")
+                self.microphone_available = False
+            
             # Create a command processing thread
             self.command_thread = threading.Thread(target=self._process_command_queue, daemon=True)
             self.command_thread.start()
             
-            self.logger.info("Voice recognizer initialized successfully")
+            self.logger.info(f"Voice recognizer initialized successfully. Microphone available: {self.microphone_available}")
         
         except Exception as e:
             self.logger.error(f"Error initializing voice recognizer: {e}")
@@ -60,6 +70,14 @@ class VoiceRecognizer(threading.Thread):
         
         self.logger.info("Voice recognition thread started")
         
+        # Check if microphone is available
+        if not self.microphone_available:
+            self.logger.warning("Microphone not available - voice recognition will not work")
+            # Keep thread alive but not actively listening
+            while not self.stopped:
+                time.sleep(1)
+            return
+            
         while not self.stopped:
             if self.paused:
                 time.sleep(0.5)  # Sleep briefly when paused
@@ -105,7 +123,10 @@ class VoiceRecognizer(threading.Thread):
             
             except Exception as e:
                 self.logger.error(f"Error accessing microphone: {e}")
-                time.sleep(1)  # Wait before retrying
+                # If microphone access fails, set flag to false and break out of listening loop
+                self.microphone_available = False
+                self.logger.warning("Microphone no longer available - voice recognition disabled")
+                break
     
     def _listen_for_command(self):
         """Listen for a command after the wake word is detected."""

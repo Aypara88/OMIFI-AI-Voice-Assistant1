@@ -227,6 +227,131 @@ function fetchClipboardContent(event) {
 }
 
 /**
+ * Take a screenshot via web interface
+ */
+function takeScreenshot() {
+    const button = document.getElementById('takeScreenshotBtn');
+    button.disabled = true;
+    button.textContent = 'Taking Screenshot...';
+    
+    fetch('/take-screenshot', {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('success', data.message);
+            // Reload the page to show the new screenshot
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        } else {
+            showNotification('danger', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error taking screenshot:', error);
+        showNotification('danger', 'Error taking screenshot. Please try again.');
+    })
+    .finally(() => {
+        button.disabled = false;
+        button.textContent = 'Take Screenshot';
+    });
+}
+
+/**
+ * Sense clipboard via web interface
+ */
+function senseClipboard() {
+    const button = document.getElementById('senseClipboardBtn');
+    button.disabled = true;
+    button.textContent = 'Sensing Clipboard...';
+    
+    fetch('/sense-clipboard', {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('success', data.message);
+            // Show preview if available
+            if (data.content_preview) {
+                showNotification('info', `Clipboard content: ${data.content_preview}`);
+            }
+            // Reload the page to show the new clipboard content
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        } else {
+            showNotification('danger', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error sensing clipboard:', error);
+        showNotification('danger', 'Error sensing clipboard. Please try again.');
+    })
+    .finally(() => {
+        button.disabled = false;
+        button.textContent = 'Sense Clipboard';
+    });
+}
+
+/**
+ * Execute command via web interface
+ */
+document.addEventListener('DOMContentLoaded', function() {
+    const commandForm = document.getElementById('commandForm');
+    if (commandForm) {
+        commandForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(commandForm);
+            const submitButton = commandForm.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.textContent = 'Executing...';
+            
+            fetch('/command', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('success', data.message);
+                    // Close the modal
+                    bootstrap.Modal.getInstance(document.getElementById('commandModal')).hide();
+                    // Reset the form
+                    commandForm.reset();
+                    // Reload the page to show any new data
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    showNotification('danger', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error executing command:', error);
+                showNotification('danger', 'Error executing command. Please try again.');
+            })
+            .finally(() => {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Execute';
+            });
+        });
+    }
+});
+
+/**
  * Refresh OMIFI status without reloading the page
  */
 function refreshStatus() {
@@ -238,6 +363,20 @@ function refreshStatus() {
                 updateActionButton('stop');
             } else {
                 updateActionButton('start');
+            }
+            
+            // Update microphone status if available
+            const microphoneStatus = document.getElementById('microphoneStatus');
+            if (microphoneStatus) {
+                if (data.microphone_available) {
+                    microphoneStatus.textContent = 'Available';
+                    microphoneStatus.classList.remove('bg-warning', 'bg-danger');
+                    microphoneStatus.classList.add('bg-success');
+                } else {
+                    microphoneStatus.textContent = 'Not Available';
+                    microphoneStatus.classList.remove('bg-warning', 'bg-success');
+                    microphoneStatus.classList.add('bg-danger');
+                }
             }
         })
         .catch(error => {

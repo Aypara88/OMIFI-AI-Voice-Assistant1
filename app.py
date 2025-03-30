@@ -281,7 +281,22 @@ def stop_omifi():
 @app.route('/status')
 def status():
     """Get the status of the OMIFI desktop application."""
-    return jsonify({"running": get_omifi_status()})
+    running = get_omifi_status()
+    # Check if microphone is available
+    microphone_available = False
+    try:
+        import speech_recognition as sr
+        recognizer = sr.Recognizer()
+        with sr.Microphone() as source:
+            logger.info("Microphone check successful")
+            microphone_available = True
+    except Exception as e:
+        logger.warning(f"Microphone not available: {e}")
+        
+    return jsonify({
+        "running": running,
+        "microphone_available": microphone_available
+    })
 
 @app.route('/clipboard/<path:filepath>')
 def get_clipboard(filepath):
@@ -358,6 +373,129 @@ def get_clipboard_qr(filepath):
     except Exception as e:
         logger.error(f"Error generating QR code for clipboard: {e}")
         return str(e), 500
+
+@app.route('/command', methods=['POST'])
+def execute_command():
+    """Execute a command directly from the web interface."""
+    try:
+        command_text = request.form.get('command')
+        
+        if not command_text:
+            return jsonify({"success": False, "message": "No command provided"})
+        
+        logger.info(f"Processing web command: {command_text}")
+        
+        # Initialize components for command processing
+        from omifi.storage import Storage
+        storage = Storage()
+        
+        # Initialize command processor
+        from omifi.command_processor import CommandProcessor
+        command_processor = CommandProcessor(storage)
+        
+        # Initialize managers if needed
+        try:
+            from omifi.clipboard import ClipboardManager
+            clipboard_manager = ClipboardManager(storage)
+            command_processor.clipboard_manager = clipboard_manager
+        except Exception as e:
+            logger.warning(f"Clipboard manager not available: {e}")
+        
+        try:
+            from omifi.screenshot import ScreenshotManager
+            screenshot_manager = ScreenshotManager(storage)
+            command_processor.screenshot_manager = screenshot_manager
+        except Exception as e:
+            logger.warning(f"Screenshot manager not available: {e}")
+        
+        try:
+            from omifi.text_to_speech import TextToSpeech
+            text_to_speech = TextToSpeech()
+            command_processor.text_to_speech = text_to_speech
+        except Exception as e:
+            logger.warning(f"Text-to-speech not available: {e}")
+        
+        # Process the command
+        result = command_processor.process_command(command_text)
+        
+        # Refresh metadata for the dashboard
+        return jsonify({
+            "success": result, 
+            "message": "Command executed successfully" if result else "Command failed or not recognized",
+            "running": get_omifi_status()
+        })
+    
+    except Exception as e:
+        logger.error(f"Error executing command: {e}")
+        return jsonify({"success": False, "message": f"Error: {str(e)}"})
+
+@app.route('/take-screenshot', methods=['POST'])
+def take_screenshot():
+    """Take a screenshot from the web interface."""
+    try:
+        # Initialize components
+        from omifi.storage import Storage
+        storage = Storage()
+        
+        from omifi.screenshot import ScreenshotManager
+        screenshot_manager = ScreenshotManager(storage)
+        
+        # Take screenshot
+        filepath = screenshot_manager.take_screenshot()
+        
+        if filepath:
+            # Get filename from path
+            filename = os.path.basename(filepath)
+            return jsonify({
+                "success": True,
+                "message": "Screenshot taken successfully",
+                "filepath": filename
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": "Failed to take screenshot"
+            })
+    
+    except Exception as e:
+        logger.error(f"Error taking screenshot: {e}")
+        return jsonify({"success": False, "message": f"Error: {str(e)}"})
+
+@app.route('/sense-clipboard', methods=['POST'])
+def sense_clipboard():
+    """Sense clipboard content from the web interface."""
+    try:
+        # Initialize components
+        from omifi.storage import Storage
+        storage = Storage()
+        
+        from omifi.clipboard import ClipboardManager
+        clipboard_manager = ClipboardManager(storage)
+        
+        # Sense clipboard
+        content_type, content = clipboard_manager.sense_clipboard()
+        
+        if content:
+            # Get filepath from storage
+            filepath, _ = storage.get_last_clipboard_content()
+            filename = os.path.basename(filepath) if filepath else None
+            
+            return jsonify({
+                "success": True,
+                "message": "Clipboard content captured successfully",
+                "content_type": content_type,
+                "content_preview": content[:100] + "..." if len(content) > 100 else content,
+                "filepath": filename
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": "No clipboard content available"
+            })
+    
+    except Exception as e:
+        logger.error(f"Error sensing clipboard: {e}")
+        return jsonify({"success": False, "message": f"Error: {str(e)}"})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
