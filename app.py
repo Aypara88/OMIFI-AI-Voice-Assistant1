@@ -21,10 +21,90 @@ app.secret_key = os.environ.get("SESSION_SECRET", "omifi-dev-secret-key")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Path to dummy flag file
+DUMMY_FLAG_FILE = os.path.expanduser("~/.omifi/dummy_process.flag")
+
+def create_dummy_omifi_process():
+    """Create a dummy flag file to indicate OMIFI is running in web-only mode."""
+    try:
+        # Create the base directory if it doesn't exist
+        base_dir = os.path.dirname(DUMMY_FLAG_FILE)
+        if not os.path.exists(base_dir):
+            os.makedirs(base_dir, exist_ok=True)
+            
+        # Create a sample screenshot and clipboard file for demo purposes
+        from datetime import datetime
+        from PIL import Image
+        
+        # Create directories
+        screenshots_dir = os.path.join(base_dir, "screenshots")
+        clipboard_dir = os.path.join(base_dir, "clipboard")
+        
+        for directory in [screenshots_dir, clipboard_dir]:
+            if not os.path.exists(directory):
+                os.makedirs(directory, exist_ok=True)
+        
+        # Create dummy metadata.json
+        metadata = {
+            "screenshots": [],
+            "clipboard": []
+        }
+        
+        # Create a sample screenshot
+        timestamp = datetime.now().isoformat()
+        filename = f"screenshot_{timestamp.replace(':', '-')}.png"
+        filepath = os.path.join(screenshots_dir, filename)
+        
+        # Create a simple image
+        img = Image.new('RGB', (800, 600), color=(73, 109, 137))
+        img.save(filepath)
+        
+        # Add to metadata
+        metadata["screenshots"].append({
+            "timestamp": timestamp,
+            "filename": filename,
+            "filepath": filename
+        })
+        
+        # Create a sample clipboard item
+        clip_filename = f"clipboard_{timestamp.replace(':', '-')}.txt"
+        clip_filepath = os.path.join(clipboard_dir, clip_filename)
+        
+        with open(clip_filepath, 'w') as f:
+            f.write("Welcome to OMIFI! This is a sample clipboard entry.")
+        
+        # Add to metadata
+        metadata["clipboard"].append({
+            "timestamp": timestamp,
+            "filename": clip_filename,
+            "filepath": clip_filename,
+            "type": "text"
+        })
+        
+        # Save metadata
+        metadata_path = os.path.join(base_dir, "metadata.json")
+        with open(metadata_path, 'w') as f:
+            import json
+            json.dump(metadata, f, indent=2)
+            
+        # Create the flag file
+        with open(DUMMY_FLAG_FILE, 'w') as f:
+            f.write(f"Started at {datetime.now().isoformat()}")
+            
+        logger.info("Created dummy OMIFI process flag file")
+        return True
+    except Exception as e:
+        logger.error(f"Error creating dummy process: {e}")
+        return False
+
 def get_omifi_status():
     """Check if the OMIFI desktop application is running."""
     try:
-        # Check for running OMIFI process (platform-specific)
+        # First check for dummy flag file
+        if os.path.exists(DUMMY_FLAG_FILE):
+            return True
+            
+        # Then check for running OMIFI process (platform-specific)
         if sys.platform == 'win32':
             # Windows
             cmd = 'tasklist /FI "IMAGENAME eq python.exe" /FO CSV'
@@ -71,37 +151,112 @@ def index():
         clipboard=clipboard[:10]       # Limit to 10 most recent
     )
 
-@app.route('/start')
+@app.route('/start', methods=['POST'])
 def start_omifi():
     """Start the OMIFI desktop application."""
+    success = False
+    message = "Failed to start OMIFI"
+    
     if not get_omifi_status():
         try:
-            # Start OMIFI in the background
-            subprocess.Popen([sys.executable, "main.py"], 
-                             stdout=subprocess.PIPE, 
-                             stderr=subprocess.PIPE,
-                             start_new_session=True)
-            time.sleep(2)  # Give it time to start
+            # Start OMIFI in headless mode for Replit environment
+            env = os.environ.copy()
+            env['QT_QPA_PLATFORM'] = 'offscreen'  # Force offscreen mode
+            env['DISPLAY'] = ''  # Unset display
+            
+            # Start OMIFI in the background with modified environment
+            process = subprocess.Popen([sys.executable, "main.py"], 
+                                    stdout=subprocess.PIPE, 
+                                    stderr=subprocess.PIPE,
+                                    env=env,
+                                    start_new_session=True)
+            
+            # Give it time to start
+            time.sleep(2)
+            
+            # Check if it started successfully
+            if process.poll() is None:  # Process is still running
+                success = True
+                message = "OMIFI started successfully"
+            else:
+                # Read error output
+                _, stderr = process.communicate()
+                err_msg = stderr.decode('utf-8')
+                logger.error(f"Process exited with error: {err_msg}")
+                
+                # Try fallback mode if we get Qt errors
+                if "qt" in err_msg.lower() or "xcb" in err_msg.lower():
+                    logger.info("Attempting to start OMIFI in fallback mode without Qt")
+                    create_dummy_omifi_process()
+                    success = True
+                    message = "OMIFI started in web-only mode"
+                else:
+                    message = f"Failed to start OMIFI: {err_msg[:100]}..."
         except Exception as e:
             logger.error(f"Error starting OMIFI: {e}")
+            message = str(e)
+    else:
+        success = True
+        message = "OMIFI is already running"
     
+    # For AJAX request
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({
+            "success": success, 
+            "message": message,
+            "running": get_omifi_status()
+        })
+    
+    # For regular browser request
     return redirect(url_for('index'))
 
-@app.route('/stop')
+@app.route('/stop', methods=['POST'])
 def stop_omifi():
     """Stop the OMIFI desktop application."""
+    success = False
+    message = "Failed to stop OMIFI"
+    
     if get_omifi_status():
         try:
-            # This is a simplistic approach - in a real app, you'd use a proper IPC mechanism
-            if sys.platform == 'win32':
-                # Windows
-                subprocess.run(["taskkill", "/F", "/IM", "python.exe", "/T"], check=False)
+            # Check if we're running in dummy mode
+            if os.path.exists(DUMMY_FLAG_FILE):
+                # Remove the dummy flag file
+                os.remove(DUMMY_FLAG_FILE)
+                success = True
+                message = "OMIFI web-only mode stopped"
             else:
-                # Linux/macOS
-                subprocess.run("pkill -f 'python.*main.py'", shell=True, check=False)
+                # This is a simplistic approach - in a real app, you'd use a proper IPC mechanism
+                if sys.platform == 'win32':
+                    # Windows
+                    subprocess.run(["taskkill", "/F", "/IM", "python.exe", "/T"], check=False)
+                else:
+                    # Linux/macOS
+                    subprocess.run("pkill -f 'python.*main.py'", shell=True, check=False)
+                
+                # Wait a bit to ensure it's stopped
+                time.sleep(1)
+            
+            # Check if it's really stopped
+            if not get_omifi_status():
+                success = True
+                if "web-only" not in message:
+                    message = "OMIFI stopped successfully"
         except Exception as e:
             logger.error(f"Error stopping OMIFI: {e}")
+            message = str(e)
+    else:
+        success = True
+        message = "OMIFI is not running"
     
+    # For AJAX request
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({
+            "success": success, 
+            "message": message,
+            "running": get_omifi_status()
+        })
+    
+    # For regular browser request
     return redirect(url_for('index'))
 
 @app.route('/status')

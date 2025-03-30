@@ -113,26 +113,41 @@ class CommandProcessor:
         if self.text_to_speech:
             self.text_to_speech.speak("Checking clipboard content")
         
-        if self.clipboard_manager:
-            try:
-                content_type, content = self.clipboard_manager.sense_clipboard()
-                
-                if content and content.strip():
-                    preview = content[:100] + "..." if len(content) > 100 else content
-                    if self.text_to_speech:
-                        self.text_to_speech.speak(f"Clipboard contains: {preview}")
-                    return True
-                else:
-                    if self.text_to_speech:
-                        self.text_to_speech.speak("Clipboard is empty or contains non-text content")
-            except Exception as e:
-                self.logger.error(f"Error in clipboard sensing: {e}")
-                if self.text_to_speech:
-                    self.text_to_speech.speak("Error accessing clipboard")
-        else:
+        if not self.clipboard_manager:
             if self.text_to_speech:
                 self.text_to_speech.speak("Clipboard functionality is not available")
+            return False
             
+        try:
+            # Handle clipboard results safely
+            content_type, content = "", ""
+            
+            try:
+                
+                # Get clipboard content
+                result = self.clipboard_manager.sense_clipboard()
+                
+                # Check if result is a valid tuple with content
+                if result and isinstance(result, tuple) and len(result) >= 2:
+                    content_type, content = result[0], result[1]
+            except TypeError:
+                self.logger.warning("Clipboard manager returned unexpected result")
+                
+            # Check if we got content
+            if content and isinstance(content, str) and content.strip():
+                preview = content[:100] + "..." if len(content) > 100 else content
+                if self.text_to_speech:
+                    self.text_to_speech.speak(f"Clipboard contains: {preview}")
+                return True
+            else:
+                if self.text_to_speech:
+                    self.text_to_speech.speak("Clipboard is empty or contains non-text content")
+                    
+        except Exception as e:
+            self.logger.error(f"Error in clipboard sensing: {e}")
+            if self.text_to_speech:
+                self.text_to_speech.speak("Error accessing clipboard")
+                
         return False
     
     def _handle_read_clipboard(self, text):

@@ -48,9 +48,28 @@
     background-color: var(--bs-dark);
 }
 
+/* Notifications */
+.notification-toast {
+    min-width: 250px;
+    max-width: 350px;
+    margin-bottom: 1rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    opacity: 0.95;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.notification-toast:hover {
+    opacity: 1;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .feature-item {
         min-width: 100%;
+    }
+    
+    .notification-toast {
+        min-width: auto;
+        max-width: 100%;
     }
 }

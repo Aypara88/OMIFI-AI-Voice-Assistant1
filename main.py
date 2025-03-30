@@ -54,6 +54,11 @@ def run_desktop_app():
     
     # Import PyQt5 components here to avoid loading them when running as a web server
     try:
+        # Set QT_QPA_PLATFORM to offscreen to avoid xcb dependency issues in headless environments
+        if 'DISPLAY' not in os.environ:
+            os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+            logger.info("Running in headless mode with QT_QPA_PLATFORM=offscreen")
+
         from PyQt5.QtWidgets import QApplication
         
         # Import OMIFI components
@@ -63,7 +68,6 @@ def run_desktop_app():
         from omifi.text_to_speech import TextToSpeech
         from omifi.command_processor import CommandProcessor
         from omifi.voice_recognition import VoiceRecognizer
-        from omifi.ui.system_tray import OmifiSystemTray
         
         # Create application instance
         app = QApplication(sys.argv)
@@ -87,9 +91,16 @@ def run_desktop_app():
         voice_recognizer.daemon = True
         voice_recognizer.start()
         
-        # Initialize system tray
-        tray = OmifiSystemTray(app, voice_recognizer, storage)
-        tray.show()
+        # Initialize system tray (in try/except block to handle headless environments gracefully)
+        tray = None
+        try:
+            from omifi.ui.system_tray import OmifiSystemTray
+            tray = OmifiSystemTray(app, voice_recognizer, storage)
+            tray.show()
+            logger.info("System tray initialized successfully")
+        except Exception as e:
+            logger.warning(f"Could not initialize system tray UI: {e}")
+            logger.info("Running in headless mode without UI components")
         
         # Clean up on exit
         def cleanup():
