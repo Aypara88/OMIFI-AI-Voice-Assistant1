@@ -290,22 +290,49 @@ function fallbackServerScreenshot() {
         if (data.success) {
             showNotification('success', data.message);
             
-            // Show QR code popup modal for the new screenshot
+            // Show success notification and a button to view the screenshot
             if (data.filepath) {
-                setTimeout(() => {
-                    // Generate QR code if available in the WebRTC library
-                    if (typeof generateQRCodeForContent === 'function') {
-                        generateQRCodeForContent(data.filepath, 'image');
-                    } else {
-                        // Fall back to modal
-                        showNewContentModal('screenshot', data.filepath);
+                const notifContainer = document.createElement('div');
+                notifContainer.className = 'alert alert-success alert-dismissible fade show mt-3';
+                notifContainer.innerHTML = `
+                    <strong>Success!</strong> Screenshot captured successfully.
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-primary view-screenshot-btn">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-eye me-1" viewBox="0 0 16 16">
+                                <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+                                <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+                            </svg>
+                            View Screenshot
+                        </button>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                
+                // Insert notification at the top of the content area
+                const contentArea = document.querySelector('.container main');
+                if (contentArea) {
+                    contentArea.insertBefore(notifContainer, contentArea.firstChild);
+                    
+                    // Add click event for the view button
+                    const viewBtn = notifContainer.querySelector('.view-screenshot-btn');
+                    if (viewBtn) {
+                        viewBtn.addEventListener('click', function() {
+                            showNewContentModal('screenshot', data.filepath);
+                        });
                     }
-                }, 500);
-            } else {
-                // Reload the page to show the new screenshot if no filepath provided
+                }
+                
+                // Auto-dismiss after 10 seconds
                 setTimeout(() => {
-                    window.location.reload();
-                }, 1500);
+                    if (document.body.contains(notifContainer)) {
+                        notifContainer.remove();
+                    }
+                }, 10000);
+                
+                // No automatic page reload - we'll let the user view when ready
+            } else {
+                // If no filepath was provided, refresh the screenshots list via AJAX instead of reloading
+                refreshScreenshotsList();
             }
         } else {
             showNotification('danger', data.message);
@@ -315,6 +342,56 @@ function fallbackServerScreenshot() {
         console.error('Error taking screenshot:', error);
         showNotification('danger', 'Error taking screenshot. Please try again.');
     });
+}
+
+/**
+ * Refresh the screenshots list without reloading the page
+ */
+function refreshScreenshotsList() {
+    const screenshotsList = document.querySelector('#screenshots-list');
+    if (screenshotsList) {
+        fetch('/status', {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.screenshots && data.screenshots.length > 0) {
+                // Clear and rebuild the screenshots list
+                screenshotsList.innerHTML = '';
+                data.screenshots.forEach(screenshot => {
+                    const listItem = document.createElement('div');
+                    listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    listItem.innerHTML = `
+                        <div>
+                            <strong>${screenshot.filename}</strong>
+                            <div class="text-muted small">${screenshot.timestamp}</div>
+                        </div>
+                        <div>
+                            <a href="/screenshot/${encodeURIComponent(screenshot.filepath)}" target="_blank" class="btn btn-sm btn-outline-primary me-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-eye" viewBox="0 0 16 16">
+                                    <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+                                    <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+                                </svg>
+                            </a>
+                            <a href="/screenshot/${encodeURIComponent(screenshot.filepath)}" download class="btn btn-sm btn-outline-success">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16">
+                                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                    <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                                </svg>
+                            </a>
+                        </div>
+                    `;
+                    screenshotsList.appendChild(listItem);
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing screenshots list:', error);
+        });
+    }
 }
 
 /**
@@ -376,8 +453,12 @@ function showNewContentModal(contentType, filepath) {
         if (document.body.contains(modal)) {
             document.body.removeChild(modal);
         }
-        // Reload the page to show the updated content list
-        window.location.reload();
+        // No page reload - we'll update content lists via AJAX
+        if (contentType === 'screenshot') {
+            refreshScreenshotsList();
+        } else if (contentType === 'clipboard') {
+            refreshClipboardList();
+        }
     });
 }
 
@@ -431,31 +512,59 @@ function fallbackServerClipboard() {
                 showNotification('info', `Clipboard content: ${data.content_preview}`);
             }
             
-            // Show QR code popup modal for the new clipboard content
+            // Only show clipboard info and options without automatic QR code
             if (data.filepath) {
-                // Generate QR code
-                if (typeof generateQRCodeForContent === 'function') {
-                    generateQRCodeForContent(data.filepath, 'text');
-                } else {
-                    // Fall back to modal
-                    showNewContentModal('clipboard', data.filepath);
+                const notifContainer = document.createElement('div');
+                notifContainer.className = 'alert alert-success alert-dismissible fade show mt-3';
+                notifContainer.innerHTML = `
+                    <strong>Success!</strong> Clipboard content captured successfully.
+                    <div class="mt-2 d-flex gap-2">
+                        <button class="btn btn-sm btn-primary view-clipboard-qr-btn">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-qr-code me-1" viewBox="0 0 16 16">
+                                <path d="M2 2h2v2H2V2Z"/>
+                                <path d="M6 0v6H0V0h6ZM5 1H1v4h4V1ZM4 12H2v2h2v-2Z"/>
+                                <path d="M6 10v6H0v-6h6Zm-5 1v4h4v-4H1Zm11-9h2v2h-2V2Z"/>
+                                <path d="M10 0v6h6V0h-6Zm5 1v4h-4V1h4ZM8 1V0h1v2H8v2H7V1h1Zm0 5V4h1v2H8ZM6 8V7h1V6h1v2h1V7h5v1h-4v1H7V8H6Zm0 0v1H2V8H1v1H0V7h3v1h3Zm10 1h-1V7h1v2Zm-1 0h-1v2h2v-1h-1V9Zm-4 0h2v1h-1v1h-1V9Zm2 3v-1h-1v1h-1v1h1v-1h1Zm0 0h3v1h-2v1h-1v-1Zm-4-1v1h1v-2h-1v1Zm0 0H7v1H6v-1h2Z"/>
+                            </svg>
+                            Show QR Code
+                        </button>
+                        <a href="/clipboard/${encodeURIComponent(data.filepath)}" download class="btn btn-sm btn-success">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download me-1" viewBox="0 0 16 16">
+                                <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                            </svg>
+                            Download
+                        </a>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                
+                // Insert notification at the top of the content area
+                const contentArea = document.querySelector('.container main');
+                if (contentArea) {
+                    contentArea.insertBefore(notifContainer, contentArea.firstChild);
+                    
+                    // Add click event for the QR code button
+                    const qrBtn = notifContainer.querySelector('.view-clipboard-qr-btn');
+                    if (qrBtn) {
+                        qrBtn.addEventListener('click', function() {
+                            showNewContentModal('clipboard', data.filepath);
+                        });
+                    }
                 }
                 
-                // Add a reload button that user can click when ready
+                // Auto-dismiss after 10 seconds
                 setTimeout(() => {
-                    showNotification('info', `
-                        <div class="d-flex align-items-center justify-content-between">
-                            <div>Clipboard content saved! QR code shown above.</div>
-                            <button class="btn btn-sm btn-primary ms-3" 
-                                onclick="window.location.reload()">Refresh Page</button>
-                        </div>
-                    `, 15000);
-                }, 800);
+                    if (document.body.contains(notifContainer)) {
+                        notifContainer.remove();
+                    }
+                }, 20000);
+                
+                // Refresh clipboard list without page reload
+                refreshClipboardList();
             } else {
-                // Reload the page to show the new clipboard content if no filepath provided
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1500);
+                // If no filepath was provided, refresh the clipboard list via AJAX
+                refreshClipboardList();
             }
         } else {
             showNotification('danger', data.message);
@@ -465,6 +574,75 @@ function fallbackServerClipboard() {
         console.error('Error sensing clipboard:', error);
         showNotification('danger', 'Error sensing clipboard. Please try again.');
     });
+}
+
+/**
+ * Refresh the clipboard items list without reloading the page
+ */
+function refreshClipboardList() {
+    const clipboardList = document.querySelector('#clipboard-list');
+    if (clipboardList) {
+        fetch('/status', {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.clipboard_items && data.clipboard_items.length > 0) {
+                // Clear and rebuild the clipboard list
+                clipboardList.innerHTML = '';
+                data.clipboard_items.forEach(item => {
+                    const listItem = document.createElement('div');
+                    listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    listItem.innerHTML = `
+                        <div>
+                            <strong>${item.filename || 'Clipboard Item'}</strong>
+                            <div class="text-muted small">${item.timestamp}</div>
+                            <div class="text-muted small">${item.content_preview || ''}</div>
+                        </div>
+                        <div>
+                            <a href="/clipboard/${encodeURIComponent(item.filepath)}" target="_blank" class="btn btn-sm btn-outline-primary me-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-eye" viewBox="0 0 16 16">
+                                    <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+                                    <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+                                </svg>
+                            </a>
+                            <a href="/clipboard/${encodeURIComponent(item.filepath)}" download class="btn btn-sm btn-outline-success">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16">
+                                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                    <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                                </svg>
+                            </a>
+                            <button class="btn btn-sm btn-outline-secondary show-qr-btn" data-filepath="${item.filepath}">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-qr-code" viewBox="0 0 16 16">
+                                    <path d="M2 2h2v2H2V2Z"/>
+                                    <path d="M6 0v6H0V0h6ZM5 1H1v4h4V1ZM4 12H2v2h2v-2Z"/>
+                                    <path d="M6 10v6H0v-6h6Zm-5 1v4h4v-4H1Zm11-9h2v2h-2V2Z"/>
+                                    <path d="M10 0v6h6V0h-6Zm5 1v4h-4V1h4ZM8 1V0h1v2H8v2H7V1h1Zm0 5V4h1v2H8ZM6 8V7h1V6h1v2h1V7h5v1h-4v1H7V8H6Zm0 0v1H2V8H1v1H0V7h3v1h3Zm10 1h-1V7h1v2Zm-1 0h-1v2h2v-1h-1V9Zm-4 0h2v1h-1v1h-1V9Zm2 3v-1h-1v1h-1v1h1v-1h1Zm0 0h3v1h-2v1h-1v-1Zm-4-1v1h1v-2h-1v1Zm0 0H7v1H6v-1h2Z"/>
+                                </svg>
+                            </button>
+                        </div>
+                    `;
+                    clipboardList.appendChild(listItem);
+                });
+                
+                // Add event listeners for QR code buttons
+                document.querySelectorAll('.show-qr-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const filepath = this.getAttribute('data-filepath');
+                        if (filepath) {
+                            showNewContentModal('clipboard', filepath);
+                        }
+                    });
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing clipboard list:', error);
+        });
+    }
 }
 
 /**
@@ -496,10 +674,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     bootstrap.Modal.getInstance(document.getElementById('commandModal')).hide();
                     // Reset the form
                     commandForm.reset();
-                    // Reload the page to show any new data
+                    // Refresh data without reloading the page
                     setTimeout(() => {
-                        window.location.reload();
-                    }, 1500);
+                        refreshScreenshotsList();
+                        refreshClipboardList();
+                    }, 1000);
                 } else {
                     showNotification('danger', data.message);
                 }
