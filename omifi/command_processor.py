@@ -34,31 +34,66 @@ class CommandProcessor:
             "take a screenshot": self._handle_screenshot,
             "capture screen": self._handle_screenshot,
             "take screenshot": self._handle_screenshot,
+            "snap screenshot": self._handle_screenshot,
+            "snap a screenshot": self._handle_screenshot,
             
+            # Basic clipboard-related commands
             "sense clipboard": self._handle_sense_clipboard,
             "check clipboard": self._handle_sense_clipboard,
             "what's in clipboard": self._handle_sense_clipboard,
             "what is in clipboard": self._handle_sense_clipboard,
+            "what's in my clipboard": self._handle_sense_clipboard,
+            "what is in my clipboard": self._handle_sense_clipboard,
             "clipboard": self._handle_sense_clipboard,
-            "clipboard content": self._handle_sense_clipboard,
+            "my clipboard": self._handle_sense_clipboard,
+            "get my clipboard": self._handle_sense_clipboard,
+            "detect clipboard": self._handle_sense_clipboard,
+            "save my clipboard": self._handle_sense_clipboard,
+            "backup clipboard": self._handle_sense_clipboard,
             "get clipboard": self._handle_sense_clipboard,
             "copy clipboard": self._handle_sense_clipboard,
+            "extract clipboard": self._handle_sense_clipboard,
+            "remember clipboard": self._handle_sense_clipboard,
+            "store clipboard": self._handle_sense_clipboard,
             "save clipboard": self._handle_sense_clipboard,
             "check my clipboard": self._handle_sense_clipboard,
+            "clipboard content": self._handle_sense_clipboard,
+            "capture clipboard": self._handle_sense_clipboard,
+            "capture my clipboard": self._handle_sense_clipboard,
             
+            # Read clipboard out loud 
             "read clipboard": self._handle_read_clipboard,
             "read back clipboard": self._handle_read_clipboard,
             "read the clipboard": self._handle_read_clipboard,
             "read my clipboard": self._handle_read_clipboard,
             "read out clipboard": self._handle_read_clipboard,
+            "read clipboard content": self._handle_read_clipboard,
+            "read clipboard contents": self._handle_read_clipboard,
+            "speak clipboard": self._handle_read_clipboard,
+            "tell me what's in clipboard": self._handle_read_clipboard,
+            "say clipboard": self._handle_read_clipboard,
+            "tell me clipboard": self._handle_read_clipboard,
+            "verbalize clipboard": self._handle_read_clipboard,
             
+            # Screenshot viewing
             "show last screenshot": self._handle_open_last_screenshot,
             "open last screenshot": self._handle_open_last_screenshot,
             "display screenshot": self._handle_open_last_screenshot,
             "view screenshot": self._handle_open_last_screenshot,
+            "show screenshot": self._handle_open_last_screenshot,
+            "open screenshot": self._handle_open_last_screenshot,
+            "show my screenshot": self._handle_open_last_screenshot,
+            "open my screenshot": self._handle_open_last_screenshot,
+            "last screenshot": self._handle_open_last_screenshot,
+            "find screenshot": self._handle_open_last_screenshot,
             
+            # Help commands
             "help": self._handle_help,
-            "what can you do": self._handle_help
+            "what can you do": self._handle_help,
+            "show commands": self._handle_help,
+            "commands": self._handle_help,
+            "show help": self._handle_help,
+            "how to use": self._handle_help
         }
     
     def process_command(self, text):
@@ -79,14 +114,41 @@ class CommandProcessor:
         
         self.logger.info(f"Processing command: {text}")
         
+        # Special handling for simple "clipboard" command
+        if text == "clipboard" or text == "my clipboard":
+            self.logger.info("Detected simple clipboard command")
+            return self._handle_sense_clipboard(text)
+        
         # Check exact matches first
         if text in self.command_handlers:
             return self.command_handlers[text](text)
         
-        # Check for partial matches
+        # Check for commands that are just one or two words
+        # This helps catch things like just saying "clipboard" or "screenshot"
+        words = text.split()
+        if len(words) <= 2:
+            for word in words:
+                # Check for high priority commands like "clipboard" or "screenshot"
+                if word == "clipboard":
+                    self.logger.info(f"Detected clipboard keyword in: {text}")
+                    return self._handle_sense_clipboard(text)
+                if word == "screenshot":
+                    self.logger.info(f"Detected screenshot keyword in: {text}")
+                    return self._handle_screenshot(text)
+        
+        # Check for partial matches (keep the original logic)
         for cmd, handler in self.command_handlers.items():
             if cmd in text:
                 return handler(text)
+                
+        # Check for command categories - identify topic even if exact commands don't match
+        if any(kw in text for kw in ["clipboard", "paste", "copy", "copied"]):
+            self.logger.info(f"Detected clipboard-related intent in: {text}")
+            return self._handle_sense_clipboard(text)
+            
+        if any(kw in text for kw in ["screenshot", "capture screen", "snap", "photo"]):
+            self.logger.info(f"Detected screenshot-related intent in: {text}")
+            return self._handle_screenshot(text)
                 
         # If no command was recognized
         self.logger.info("Command not recognized")
