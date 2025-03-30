@@ -404,6 +404,9 @@ function processCommand(command) {
         (command.includes('get') && command.includes('clipboard')) ||
         (command.includes('check') && command.includes('clipboard')) ||
         (command.includes('clipboard') && command.includes('content')) ||
+        (command.includes('save') && command.includes('clipboard')) ||
+        (command.includes('copy') && command.includes('clipboard')) ||
+        (command.includes('what') && (command.includes('clipboard') || command.includes('copied'))) ||
         command.trim() === 'clipboard'
     ) {
         senseClipboardFromBrowser();
@@ -553,7 +556,8 @@ function takeScreenshotFromBrowser() {
                         .then(data => {
                             if (data.success) {
                                 showNotification('success', 'Screenshot captured from browser');
-                                // Reload the page to show the new screenshot
+                                // Just reload the page to show the new screenshot
+                                // We don't show QR code automatically for screenshots
                                 setTimeout(() => {
                                     window.location.reload();
                                 }, 1500);
@@ -607,16 +611,21 @@ function senseClipboardFromBrowser() {
             .then(data => {
                 if (data.success) {
                     showNotification('success', 'Clipboard content captured from browser');
+                    
                     // Show preview if content isn't too long
                     if (text.length <= 50) {
                         showNotification('info', `Clipboard content: ${text}`);
                     } else {
                         showNotification('info', `Clipboard content: ${text.substring(0, 47)}...`);
                     }
-                    // Reload the page to show the new clipboard content
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1500);
+                    
+                    // Generate QR code for the clipboard content
+                    if (data.filepath && typeof generateQRCodeForContent === 'function') {
+                        generateQRCodeForContent(data.filepath, 'text');
+                    }
+                    
+                    // Don't reload automatically so user can view the QR code
+                    // We'll rely on the QR modal's close event to refresh the page
                 } else {
                     showNotification('danger', data.message || 'Error saving clipboard content');
                 }

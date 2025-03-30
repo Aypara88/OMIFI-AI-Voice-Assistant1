@@ -33,19 +33,29 @@ class CommandProcessor:
             "screenshot": self._handle_screenshot,
             "take a screenshot": self._handle_screenshot,
             "capture screen": self._handle_screenshot,
+            "take screenshot": self._handle_screenshot,
             
             "sense clipboard": self._handle_sense_clipboard,
             "check clipboard": self._handle_sense_clipboard,
             "what's in clipboard": self._handle_sense_clipboard,
             "what is in clipboard": self._handle_sense_clipboard,
+            "clipboard": self._handle_sense_clipboard,
+            "clipboard content": self._handle_sense_clipboard,
+            "get clipboard": self._handle_sense_clipboard,
+            "copy clipboard": self._handle_sense_clipboard,
+            "save clipboard": self._handle_sense_clipboard,
+            "check my clipboard": self._handle_sense_clipboard,
             
             "read clipboard": self._handle_read_clipboard,
             "read back clipboard": self._handle_read_clipboard,
             "read the clipboard": self._handle_read_clipboard,
+            "read my clipboard": self._handle_read_clipboard,
+            "read out clipboard": self._handle_read_clipboard,
             
             "show last screenshot": self._handle_open_last_screenshot,
             "open last screenshot": self._handle_open_last_screenshot,
             "display screenshot": self._handle_open_last_screenshot,
+            "view screenshot": self._handle_open_last_screenshot,
             
             "help": self._handle_help,
             "what can you do": self._handle_help
