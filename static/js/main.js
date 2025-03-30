@@ -288,10 +288,19 @@ function fallbackServerScreenshot() {
     .then(data => {
         if (data.success) {
             showNotification('success', data.message);
-            // Reload the page to show the new screenshot
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
+            
+            // Show QR code popup modal for the new screenshot
+            if (data.filepath) {
+                setTimeout(() => {
+                    // Use the full filepath for QR code generation
+                    showNewContentModal('screenshot', data.filepath);
+                }, 500);
+            } else {
+                // Reload the page to show the new screenshot if no filepath provided
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            }
         } else {
             showNotification('danger', data.message);
         }
@@ -299,6 +308,70 @@ function fallbackServerScreenshot() {
     .catch(error => {
         console.error('Error taking screenshot:', error);
         showNotification('danger', 'Error taking screenshot. Please try again.');
+    });
+}
+
+/**
+ * Show a popup modal with download and QR code for a new screenshot or clipboard item
+ * @param {string} contentType - Either 'screenshot' or 'clipboard'
+ * @param {string} filepath - Path to the file
+ */
+function showNewContentModal(contentType, filepath) {
+    // Get content label for display
+    const contentLabel = contentType === 'screenshot' ? 'Screenshot' : 'Clipboard Content';
+    const qrEndpoint = contentType === 'screenshot' ? 'get_screenshot_qr' : 'get_clipboard_qr';
+    const downloadEndpoint = contentType === 'screenshot' ? 'get_screenshot' : 'get_clipboard';
+    
+    // Create modal HTML
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.id = 'newContentModal';
+    modal.setAttribute('tabindex', '-1');
+    modal.setAttribute('aria-labelledby', 'newContentModalLabel');
+    modal.setAttribute('aria-hidden', 'true');
+    
+    modal.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="newContentModalLabel">New ${contentLabel} Captured</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <p>Your ${contentLabel.toLowerCase()} has been successfully captured!</p>
+                    <div class="text-center my-3">
+                        <img src="/${qrEndpoint}/${encodeURIComponent(filepath)}" alt="QR Code" class="img-fluid" style="max-width: 200px;">
+                        <p class="mt-2">Scan QR code to view on mobile device</p>
+                    </div>
+                </div>
+                <div class="modal-footer d-flex justify-content-between">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <a href="/${downloadEndpoint}/${encodeURIComponent(filepath)}" download class="btn btn-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download me-1" viewBox="0 0 16 16">
+                            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                            <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                        </svg>
+                        Download
+                    </a>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Add to DOM
+    document.body.appendChild(modal);
+    
+    // Show the modal
+    const modalInstance = new bootstrap.Modal(modal);
+    modalInstance.show();
+    
+    // Remove from DOM when hidden
+    modal.addEventListener('hidden.bs.modal', function() {
+        if (document.body.contains(modal)) {
+            document.body.removeChild(modal);
+        }
+        // Reload the page to show the updated content list
+        window.location.reload();
     });
 }
 
@@ -346,14 +419,24 @@ function fallbackServerClipboard() {
     .then(data => {
         if (data.success) {
             showNotification('success', data.message);
+            
             // Show preview if available
             if (data.content_preview) {
                 showNotification('info', `Clipboard content: ${data.content_preview}`);
             }
-            // Reload the page to show the new clipboard content
-            setTimeout(() => {
-                window.location.reload();
-            }, 1500);
+            
+            // Show QR code popup modal for the new clipboard content
+            if (data.filepath) {
+                setTimeout(() => {
+                    // Use the full filepath for QR code generation
+                    showNewContentModal('clipboard', data.filepath);
+                }, 500);
+            } else {
+                // Reload the page to show the new clipboard content if no filepath provided
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            }
         } else {
             showNotification('danger', data.message);
         }

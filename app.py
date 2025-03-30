@@ -334,9 +334,17 @@ def get_screenshot_qr(filepath):
     try:
         from io import BytesIO
         
+        # Parse the filepath to handle both full path and filename-only cases
+        if os.path.isabs(filepath):
+            # If it's a full path, extract just the filename
+            filename = os.path.basename(filepath)
+        else:
+            # If it's just a filename, use as is
+            filename = filepath
+        
         # Create the full URL to the screenshot
         base_url = request.url_root.rstrip('/')
-        screenshot_url = f"{base_url}/screenshots/{filepath}"
+        screenshot_url = f"{base_url}/screenshots/{filename}"
         
         # Generate QR code using simple version to avoid import issues
         img = qrcode.make(screenshot_url)
@@ -357,9 +365,17 @@ def get_clipboard_qr(filepath):
     try:
         from io import BytesIO
         
+        # Parse the filepath to handle both full path and filename-only cases
+        if os.path.isabs(filepath):
+            # If it's a full path, extract just the filename
+            filename = os.path.basename(filepath)
+        else:
+            # If it's just a filename, use as is
+            filename = filepath
+        
         # Create the full URL to the clipboard
         base_url = request.url_root.rstrip('/')
-        clipboard_url = f"{base_url}/clipboard/{filepath}"
+        clipboard_url = f"{base_url}/clipboard/{filename}"
         
         # Generate QR code using simple version to avoid import issues
         img = qrcode.make(clipboard_url)
@@ -461,12 +477,13 @@ def take_screenshot():
             filepath = screenshot_manager.take_screenshot()
         
         if filepath:
-            # Get filename from path
+            # Get filename from path for display
             filename = os.path.basename(filepath)
             return jsonify({
                 "success": True,
                 "message": "Screenshot taken successfully",
-                "filepath": filename
+                "filepath": filepath,  # Return full filepath for QR code generation
+                "filename": filename   # Filename for display purposes
             })
         else:
             return jsonify({
@@ -513,7 +530,8 @@ def sense_clipboard():
                 "message": "Clipboard content captured successfully",
                 "content_type": content_type,
                 "content_preview": content[:100] + "..." if len(content) > 100 else content,
-                "filepath": filename
+                "filepath": filepath,  # Return full filepath for QR code generation
+                "filename": filename   # Filename for display purposes
             })
         else:
             return jsonify({

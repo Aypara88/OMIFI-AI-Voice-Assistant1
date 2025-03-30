@@ -51,7 +51,7 @@ If voice recognition isn't working:
 3. Try running as administrator (on Windows) for better hardware access
 4. If you see PyAudio or PortAudio errors, follow the installation instructions above
 
-## Advanced Siri-Like Features (Local-Only)
+## Advanced Voice Assistant Features (Local-Only)
 
 When running on your local machine, OMIFI provides advanced voice assistant capabilities:
 
