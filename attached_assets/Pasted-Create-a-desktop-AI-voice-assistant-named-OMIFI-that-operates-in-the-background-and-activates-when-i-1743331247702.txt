@@ -1,0 +1,143 @@
+Create a desktop AI voice assistant named OMIFI that operates in the background and activates when it hears "Hey OMIFI". The app should support voice commands for taking screenshots, sensing clipboard content, syncing data across devices, and other smart automation features.
+
+
+---
+
+Core Functionalities
+
+Voice Activation & Recognition
+
+Runs in the background with minimal resource usage.
+
+Listens for the wake phrase "Hey OMIFI" before activation.
+
+Supports customizable wake words for user preference.
+
+Advanced noise filtering to minimize unintended activations.
+
+
+Screenshot Capture & Management
+
+Users can say "Hey OMIFI, take a screenshot", and it captures the current screen.
+
+Screenshots are instantly stored in OMIFI’s cloud storage.
+
+Screenshots sync automatically across all devices logged into the same account.
+
+Option to share or edit screenshots before saving.
+
+
+Clipboard Sensing & Cloud Sync
+
+Users can command "Hey OMIFI, sense my clipboard", and the app captures the clipboard content.
+
+Detected clipboard data is automatically stored in OMIFI’s cloud.
+
+Allows immediate clipboard syncing between logged-in devices.
+
+Supports text, links, images, and small files for seamless transfer.
+
+
+Cross-Device Instant Data Transfer
+
+When a screenshot or clipboard data is sensed, OMIFI automatically transfers it to all devices logged into the same account.
+
+Instant access to copied content from any device in real-time.
+
+Supports encryption for secure data transfers.
+
+
+File & Document Commands
+
+Users can say "Hey OMIFI, open my last screenshot" to instantly retrieve files.
+
+Supports quick voice search to retrieve stored screenshots and clipboard data.
+
+Users can delete stored content using "Hey OMIFI, clear my last screenshot" or "Hey OMIFI, erase my last clipboard content".
+AI-powered Text Commands & Smart Actions
+
+Summarize copied text with "Hey OMIFI, summarize this clipboard".
+
+Convert copied text to speech with "Hey OMIFI, read this clipboard aloud".
+
+Intelligent AI responses based on context (e.g., if a URL is copied, OMIFI can suggest opening it).
+
+
+
+---
+
+Additional Features for Smooth Operation
+
+Smart UI & Dashboard
+
+Minimalist UI with access to clipboard history and screenshots.
+
+Cloud storage access for retrieving old files.
+
+Customization settings for voice command preferences.
+
+
+Offline Mode & Local Storage
+
+When offline, OMIFI temporarily saves data locally and syncs once the internet is available.
+
+Users can access their clipboard and screenshots without an internet connection.
+
+
+Security & Privacy
+
+End-to-end encryption for cloud storage and data transfers.
+
+Two-factor authentication for cloud account login.
+
+Voice recognition security to ensure unauthorized persons can't activate OMIFI.
+
+
+Integration with Third-Party Apps
+
+Google Drive and Dropbox integration for additional backup.
+
+Email and messaging app support to directly paste clipboard content.
+
+Browser extension for enhanced clipboard capturing.
+
+
+Custom Automation & AI Learning
+
+Users can set automation rules, e.g., "Automatically save copied text as a note."
+
+AI learns user behavior for predictive suggestions.
+
+Support for smart reminders based on copied content (e.g., a copied date triggers a calendar event suggestion).
+
+
+
+---
+
+Technical Stack & Development Notes
+
+Programming Language: Python (for AI & automation), C++ (for low-level system
+integration), or Electron (for cross-platform UI).
+
+Voice Processing: Google Speech API, Whisper AI, or custom NLP engine.
+
+Cloud Infrastructure: Firebase, AWS, or a custom cloud solution for secure storage.
+
+UI Framework: Electron, React.js, or Qt for a modern and responsive desktop interface.
+
+
+
+---
+
+Final Prompt Instruction:
+
+Build OMIFI as a fully functional AI-powered desktop assistant that listens for voice commands, takes screenshots, senses clipboard content, and syncs data across devices. Ensure seamless automation, cloud storage integration, and real-time data transfer, prioritizing security, efficiency, and user customization.
+﻿
+Dyno
+APP
+Dyno
+#3861
+ 
+The Discord bot to make server management and moderation easy. Follow your favorite streamers, run giveaways, and more!
+
+https://dyno.gg/
