@@ -1,7 +1,19 @@
 # OMIFI Voice Assistant - Download & Installation Instructions
 
 ## Overview 
-OMIFI is experiencing limitations in the Replit environment because web browsers cannot directly access your local microphone, clipboard, or screen. For full functionality with "Hey OMIFI" voice recognition that works with your actual PC hardware, you need to download and run it locally.
+OMIFI is experiencing limitations in the Replit environment because cloud-based servers cannot directly access your local microphone, clipboard, or screen. For truly advanced Siri-like voice recognition that works with your actual PC hardware in real-time, you need to download and run OMIFI locally.
+
+## Why Local Installation Is Required for Advanced Features
+
+The web version of OMIFI running on Replit has several limitations:
+
+1. **Real-time Voice Recognition**: Replit's servers don't have physical microphones attached, so they can't directly listen to your voice commands.
+
+2. **Advanced Speech Processing**: True Siri-like functionality requires processing audio directly from your hardware with minimal latency.
+
+3. **System Integration**: Running locally allows OMIFI to integrate with your operating system for persistent background listening and immediate response.
+
+4. **Privacy and Performance**: Local processing keeps your voice data on your own machine and eliminates network delays.
 
 ## Download Instructions
 
@@ -39,10 +51,31 @@ If voice recognition isn't working:
 3. Try running as administrator (on Windows) for better hardware access
 4. If you see PyAudio or PortAudio errors, follow the installation instructions above
 
-## Features Working Locally
+## Advanced Siri-Like Features (Local-Only)
 
-When running on your local machine, OMIFI will have full access to:
-- Your microphone for real-time "Hey OMIFI" voice recognition
-- Your clipboard for real-time content sensing
-- Your screen for real-time screenshots
-- System tray integration for easy access
+When running on your local machine, OMIFI provides advanced voice assistant capabilities:
+
+### Real-Time Voice Processing
+- Continuous background listening for the "Hey OMIFI" wake word
+- Immediate response to voice commands without delays
+- High-quality voice recognition using your actual microphone hardware
+- Natural voice responses through your computer's speakers
+
+### Advanced System Integration
+- System tray integration for always-on background operation
+- Direct hardware access for perfect screenshot capability
+- Real-time clipboard monitoring and content sensing
+- Ability to run at startup for always-available assistant
+
+### Expanded Voice Commands
+- "Hey OMIFI, take a screenshot" - Captures your screen instantly
+- "Hey OMIFI, sense clipboard" - Reads and stores your clipboard content
+- "Hey OMIFI, read clipboard" - Speaks your clipboard content aloud
+- "Hey OMIFI, show last screenshot" - Opens your most recent screenshot
+- "Hey OMIFI, help me with commands" - Lists all available voice commands
+
+### No Network Requirements
+- All processing happens locally on your machine
+- Works offline without internet connectivity
+- No cloud processing delays
+- Better privacy with local-only voice processing

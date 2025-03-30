@@ -454,3 +454,73 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+/**
+ * Attempt to reconnect to the microphone
+ */
+function reconnectMicrophone() {
+    // Show attempting reconnection status
+    const voiceStatus = document.getElementById('voiceStatus');
+    if (voiceStatus) {
+        voiceStatus.textContent = "Attempting to reconnect microphone...";
+        voiceStatus.style.backgroundColor = "rgba(255, 193, 7, 0.2)"; // warning color
+    }
+    
+    // Hide reconnect button while attempting
+    const reconnectBtn = document.getElementById('microphoneReconnect');
+    if (reconnectBtn) {
+        reconnectBtn.style.display = 'none';
+    }
+    
+    // Try to request microphone access again
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(function(stream) {
+                // Success - microphone reconnected
+                if (voiceStatus) {
+                    voiceStatus.textContent = "Microphone reconnected successfully!";
+                    voiceStatus.style.backgroundColor = "rgba(25, 135, 84, 0.2)"; // success color
+                    
+                    // After 3 seconds, update status to ready
+                    setTimeout(function() {
+                        voiceStatus.textContent = "Browser microphone ready. For continuous 'Hey OMIFI' wake word detection, download the desktop version.";
+                    }, 3000);
+                }
+                
+                // Show a success notification
+                showNotification('success', 'Microphone reconnected successfully!');
+                
+                // Update microphone status badge in the UI
+                const micStatus = document.getElementById('microphoneStatus');
+                if (micStatus) {
+                    micStatus.textContent = "Available";
+                    micStatus.classList.remove('bg-warning', 'bg-danger');
+                    micStatus.classList.add('bg-success');
+                }
+            })
+            .catch(function(err) {
+                console.error('Error reconnecting microphone:', err);
+                
+                if (voiceStatus) {
+                    voiceStatus.textContent = "Failed to reconnect microphone. Please check permissions and try again.";
+                    voiceStatus.style.backgroundColor = "rgba(220, 53, 69, 0.2)"; // danger color
+                }
+                
+                // Show reconnect button again
+                if (reconnectBtn) {
+                    reconnectBtn.style.display = 'block';
+                }
+                
+                // Show an error notification
+                showNotification('danger', 'Failed to reconnect to microphone. Please check your browser permissions.');
+            });
+    } else {
+        if (voiceStatus) {
+            voiceStatus.textContent = "Your browser doesn't support microphone access. Please download the desktop app.";
+            voiceStatus.style.backgroundColor = "rgba(220, 53, 69, 0.2)"; // danger color
+        }
+        
+        // Show an error notification
+        showNotification('danger', 'Your browser doesn\'t support microphone access. Please download the desktop app.');
+    }
+}
