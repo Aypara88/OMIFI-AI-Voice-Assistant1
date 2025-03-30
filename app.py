@@ -503,14 +503,65 @@ def sense_clipboard():
         from omifi.storage import Storage
         storage = Storage()
         
+        # Initialize default values for required variables
+        content = None
+        content_type = "text"
+        content_preview = ""
+        filepath = None
+        
+        # Check if this is a JSON request for fallback clipboard access
+        if request.is_json:
+            logger.info("Received JSON request for clipboard sensing")
+            json_data = request.get_json()
+            
+            # Check if this is a fallback request
+            if json_data.get('fallback') and json_data.get('use_system_clipboard'):
+                logger.info("Using system clipboard as fallback")
+                from omifi.clipboard import ClipboardManager
+                clipboard_manager = ClipboardManager(storage)
+                
+                # Sense clipboard with priority on system access
+                content_type, content = clipboard_manager.sense_clipboard(force_system=True)
+                
+                if content:
+                    logger.info(f"System clipboard content detected: {content_type}")
+                    
+                    # Set preview based on content type
+                    if content_type == 'text':
+                        content_preview = content[:100] + "..." if len(content) > 100 else content
+                    else:
+                        content_preview = f"[{content_type.upper()} content]"
+                    
+                    # Get filepath from storage
+                    filepath, _ = storage.get_last_clipboard_content() 
+                    filename = os.path.basename(filepath) if filepath else None
+                    
+                    return jsonify({
+                        "success": True,
+                        "message": f"System clipboard {content_type} content captured successfully",
+                        "content_type": content_type,
+                        "content_preview": content_preview,
+                        "filepath": filepath,
+                        "filename": filename
+                    })
+                else:
+                    return jsonify({
+                        "success": False,
+                        "message": "No content detected in system clipboard"
+                    })
+        
         # Check if we have direct clipboard content from the browser
-        if 'content' in request.form:
+        elif 'content' in request.form:
             logger.info("Received clipboard content from browser")
             content = request.form.get('content')
             content_type = request.form.get('type', 'text')
             
+            # Get optional metadata
+            mime_type = request.form.get('mime_type')
+            custom_filename = request.form.get('filename')
+            
             # Save content directly
-            filepath = storage.save_clipboard_content(content, content_type)
+            filepath = storage.save_clipboard_content(content, content_type, filename=custom_filename)
             logger.info(f"Browser clipboard content saved to {filepath}")
             
             # Set preview based on content type
@@ -518,6 +569,8 @@ def sense_clipboard():
                 content_preview = content[:100] + "..." if len(content) > 100 else content
             else:
                 content_preview = f"[{content_type.upper()} content]"
+                if mime_type:
+                    content_preview += f" ({mime_type})"
         
         # Check if we have a file upload (for image data)
         elif 'content' in request.files:
@@ -525,15 +578,21 @@ def sense_clipboard():
             file = request.files['content']
             content_type = request.form.get('type', 'image')
             
+            # Get optional metadata
+            mime_type = request.form.get('mime_type')
+            custom_filename = request.form.get('filename') or file.filename
+            
             # Read file content
             content = file.read()
             
             # Save content
-            filepath = storage.save_clipboard_content(content, content_type, filename=file.filename)
+            filepath = storage.save_clipboard_content(content, content_type, filename=custom_filename)
             logger.info(f"Browser clipboard file saved to {filepath}")
             
             # Set preview based on content type
             content_preview = f"[{content_type.upper()} content]"
+            if mime_type:
+                content_preview += f" ({mime_type})"
                 
         else:
             # Fall back to traditional clipboard sensing
@@ -546,12 +605,15 @@ def sense_clipboard():
             # Set preview for text content
             if content_type == 'text' and content:
                 content_preview = content[:100] + "..." if len(content) > 100 else content
-            else:
+            elif content:  # If it's not text but we have content
                 content_preview = f"[{content_type.upper()} content]"
         
-        if content:
-            # Get filepath from storage
-            filepath, _ = storage.get_last_clipboard_content()
+        # Final response handling
+        if content is not None:
+            # Get filepath from storage if not already set
+            if not filepath:
+                filepath, _ = storage.get_last_clipboard_content()
+                
             filename = os.path.basename(filepath) if filepath else None
             
             return jsonify({

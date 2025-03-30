@@ -27,7 +27,7 @@ class ClipboardManager:
         self.last_content = None
         self.last_content_type = "text"
     
-    def sense_clipboard(self):
+    def sense_clipboard(self, force_system=False):
         """
         Get the current clipboard content and save it.
         This method tries to detect different types of clipboard content:
@@ -35,10 +35,42 @@ class ClipboardManager:
         - Image content
         - Binary content (if detectable)
 
+        Args:
+            force_system (bool): If True, prioritize system clipboard access without checking content equality
+
         Returns:
             tuple: (str, str) - Content type and clipboard content
         """
-        # First try to get image content if available
+        # Attempt order depends on force_system flag
+        if force_system:
+            # When forcing system clipboard, try text first as it's most reliable
+            text_result = self._try_get_text_clipboard(force_new=True)
+            if text_result[1]:  # If we got text content
+                return text_result
+                
+            # If no text, try image
+            image_result = self._try_get_image_clipboard()
+            if image_result[1]:  # If we got image content
+                return image_result
+                
+            # Both failed, return empty text
+            return "text", ""
+        else:
+            # Normal flow - try image first, then text
+            image_result = self._try_get_image_clipboard()
+            if image_result[1]:  # If we got image content
+                return image_result
+                
+            # If no image, try text
+            return self._try_get_text_clipboard()
+
+    def _try_get_image_clipboard(self):
+        """
+        Try to get image content from clipboard.
+        
+        Returns:
+            tuple: (content_type, content) - Image content type and data
+        """
         try:
             # Try to get image from clipboard (this works on most platforms)
             img = self._get_clipboard_image()
@@ -63,7 +95,19 @@ class ClipboardManager:
         except Exception as e:
             self.logger.error(f"Error handling clipboard image: {e}")
         
-        # If no image, try to get text content
+        # Return empty if no image or error
+        return "image", ""
+    
+    def _try_get_text_clipboard(self, force_new=False):
+        """
+        Try to get text content from clipboard.
+        
+        Args:
+            force_new (bool): If True, ignore if content is the same as previous
+        
+        Returns:
+            tuple: (content_type, content) - Text content type and data
+        """
         try:
             # Get clipboard text content
             clipboard_content = pyperclip.paste()
@@ -76,8 +120,8 @@ class ClipboardManager:
             # Detect content type based on the text
             content_type = self._detect_content_type(clipboard_content)
                 
-            # Skip if content hasn't changed
-            if clipboard_content == self.last_content and content_type == self.last_content_type:
+            # Skip if content hasn't changed (unless force_new is True)
+            if not force_new and clipboard_content == self.last_content and content_type == self.last_content_type:
                 self.logger.info("Clipboard content unchanged since last check")
                 return content_type, clipboard_content
             
@@ -89,7 +133,7 @@ class ClipboardManager:
             return "text", clipboard_content
             
         except Exception as e:
-            self.logger.error(f"Error sensing clipboard: {e}")
+            self.logger.error(f"Error sensing clipboard text: {e}")
             return "text", ""
     
     def get_current_clipboard(self):

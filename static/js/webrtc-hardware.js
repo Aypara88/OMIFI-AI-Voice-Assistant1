@@ -599,21 +599,40 @@ function takeScreenshotFromBrowser() {
  * Sense clipboard content using the browser's clipboard API
  */
 function senseClipboardFromBrowser() {
-    // Check for clipboard API support
+    showNotification('info', 'Sensing clipboard content...', 2000);
+    
+    // Check for basic clipboard API support
     if (!navigator.clipboard) {
         showNotification('warning', 'Clipboard access not supported in your browser');
         fallbackServerClipboard();
         return;
     }
     
-    // First try to detect if there's an image in the clipboard
-    tryReadClipboardImage()
-        .then(imageBlob => {
-            if (imageBlob) {
-                // We have an image, upload it
+    // First try advanced clipboard reading for non-text content
+    tryReadClipboardContent()
+        .then(contentInfo => {
+            if (contentInfo) {
+                console.log('Detected clipboard content:', contentInfo.type);
+                
+                // Create a form to submit the data
                 const formData = new FormData();
-                formData.append('content', imageBlob);
-                formData.append('type', 'image');
+                
+                // Add the content blob
+                formData.append('content', contentInfo.data);
+                formData.append('type', contentInfo.type);
+                
+                // Add metadata if available
+                if (contentInfo.mimeType) {
+                    formData.append('mime_type', contentInfo.mimeType);
+                }
+                
+                if (contentInfo.extension) {
+                    const timestamp = new Date().toISOString().replace(/[-:.]/g, '').substring(0, 15);
+                    formData.append('filename', `clipboard_${timestamp}${contentInfo.extension}`);
+                }
+                
+                // Show a notification about what we found
+                showNotification('info', `Detected ${contentInfo.type} content in clipboard`, 2000);
                 
                 // Send to server
                 fetch('/sense-clipboard', {
@@ -623,26 +642,33 @@ function senseClipboardFromBrowser() {
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        showNotification('success', 'Image from clipboard captured!');
+                        showNotification('success', `${contentInfo.type.charAt(0).toUpperCase() + contentInfo.type.slice(1)} content captured from clipboard!`);
                         
-                        // Generate QR code for the clipboard content
+                        // Generate QR code for the content if supported
                         if (data.filepath && typeof generateQRCodeForContent === 'function') {
-                            generateQRCodeForContent(data.filepath, 'image');
+                            generateQRCodeForContent(data.filepath, contentInfo.type);
                         }
                     } else {
-                        showNotification('danger', data.message || 'Error saving clipboard image');
+                        showNotification('danger', data.message || `Error saving clipboard ${contentInfo.type}`);
                     }
                 })
                 .catch(error => {
-                    console.error('Error saving clipboard image:', error);
-                    showNotification('danger', 'Error saving clipboard image');
+                    console.error(`Error saving clipboard ${contentInfo.type}:`, error);
+                    showNotification('danger', `Error saving clipboard ${contentInfo.type}`);
+                    
+                    // Try server-side fallback
+                    fallbackServerClipboard();
                 });
             } else {
-                // No image found, try for text
+                // No binary content found, try for text
+                console.log('No binary content found, trying for text');
                 navigator.clipboard.readText()
                     .then(text => {
-                        if (!text) {
-                            showNotification('warning', 'Clipboard is empty or contains unsupported content');
+                        if (!text || text.trim() === '') {
+                            showNotification('warning', 'Clipboard appears to be empty');
+                            
+                            // Try server fallback as last resort
+                            fallbackServerClipboard();
                             return;
                         }
                         
@@ -659,13 +685,13 @@ function senseClipboardFromBrowser() {
                         .then(response => response.json())
                         .then(data => {
                             if (data.success) {
-                                showNotification('success', 'Clipboard content captured from browser');
+                                showNotification('success', 'Text content captured from clipboard');
                                 
                                 // Show preview if content isn't too long
                                 if (text.length <= 50) {
-                                    showNotification('info', `Clipboard content: ${text}`);
+                                    showNotification('info', `Clipboard text: ${text}`);
                                 } else {
-                                    showNotification('info', `Clipboard content: ${text.substring(0, 47)}...`);
+                                    showNotification('info', `Clipboard text: ${text.substring(0, 47)}...`);
                                 }
                                 
                                 // Generate QR code for the clipboard content
@@ -679,6 +705,9 @@ function senseClipboardFromBrowser() {
                         .catch(error => {
                             console.error('Error saving clipboard content:', error);
                             showNotification('danger', 'Error saving clipboard content');
+                            
+                            // Try server-side fallback
+                            fallbackServerClipboard();
                         });
                     })
                     .catch(error => {
@@ -692,41 +721,263 @@ function senseClipboardFromBrowser() {
         })
         .catch(error => {
             console.error('Error accessing clipboard:', error);
+            showNotification('warning', 'Clipboard access error, trying server-side method');
             fallbackServerClipboard();
         });
 }
 
 /**
- * Try to read an image from clipboard
- * @returns {Promise<Blob|null>} A promise resolving to the image blob or null if no image
+ * Fallback to server-side clipboard detection when browser API fails
  */
-async function tryReadClipboardImage() {
+function fallbackServerClipboard() {
+    showNotification('info', 'Trying server-side clipboard access...', 2000);
+    
+    // Just in case browser clipboard access fails, try the server-side method
+    fetch('/sense-clipboard', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+            fallback: true,
+            use_system_clipboard: true
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('success', 'Clipboard content captured using system clipboard');
+            
+            // Show content preview if available
+            if (data.content_preview && data.content_type === 'text') {
+                const preview = data.content_preview.length > 50 ? 
+                    data.content_preview.substring(0, 47) + '...' : 
+                    data.content_preview;
+                showNotification('info', `System clipboard: ${preview}`);
+            } else if (data.content_type) {
+                showNotification('info', `Captured ${data.content_type} content from system clipboard`);
+            }
+            
+            // Generate QR code for the clipboard content
+            if (data.filepath && typeof generateQRCodeForContent === 'function') {
+                generateQRCodeForContent(data.filepath, data.content_type || 'text');
+            }
+        } else {
+            showNotification('warning', data.message || 'Failed to capture clipboard content');
+        }
+    })
+    .catch(error => {
+        console.error('Error with server clipboard sensing:', error);
+        showNotification('danger', 'Error accessing system clipboard');
+    });
+}
+
+/**
+ * Try to read any non-text content from clipboard
+ * @returns {Promise<Object|null>} A promise resolving to an object with content data or null if nothing found
+ */
+async function tryReadClipboardContent() {
     // Check if Clipboard API is available with proper item reading
     if (!navigator.clipboard || !navigator.clipboard.read) {
+        console.warn('Advanced clipboard API not available in this browser');
         return null;
     }
     
     try {
-        const items = await navigator.clipboard.read();
+        // Log for debugging
+        console.log('Attempting to read clipboard items using Async Clipboard API');
         
+        const items = await navigator.clipboard.read();
+        console.log('Clipboard items found:', items.length);
+        
+        // Process each item
         for (const item of items) {
-            // Check if there's an image type in the clipboard
+            console.log('Clipboard item types:', item.types);
+            
+            // Check for images first (most common non-text content)
             if (item.types.some(type => type.startsWith('image/'))) {
                 // Get the first image type
                 const imageType = item.types.find(type => type.startsWith('image/'));
+                console.log('Found image in clipboard of type:', imageType);
                 
-                // Get the image blob
-                const blob = await item.getType(imageType);
-                return blob;
+                try {
+                    // Get the image blob
+                    const blob = await item.getType(imageType);
+                    
+                    // Return image data
+                    return {
+                        type: 'image',
+                        mimeType: imageType,
+                        data: blob,
+                        extension: imageTypeToExtension(imageType)
+                    };
+                } catch (imgError) {
+                    console.error('Error getting image from clipboard:', imgError);
+                }
+            }
+            
+            // Check for other file types
+            for (const type of item.types) {
+                // Skip text/* types as we handle those separately
+                if (type.startsWith('text/')) continue;
+                
+                try {
+                    console.log('Trying to extract content of type:', type);
+                    const blob = await item.getType(type);
+                    
+                    // Determine the best content type category
+                    let contentType = 'file';
+                    if (type.startsWith('audio/')) contentType = 'audio';
+                    else if (type.startsWith('video/')) contentType = 'video';
+                    else if (type.startsWith('application/')) contentType = 'document';
+                    
+                    // Return file data
+                    return {
+                        type: contentType,
+                        mimeType: type,
+                        data: blob,
+                        extension: mimeTypeToExtension(type)
+                    };
+                } catch (fileError) {
+                    console.error(`Error getting ${type} content from clipboard:`, fileError);
+                }
             }
         }
         
-        // No image found
+        // Try with DataTransfer API as a backup
+        try {
+            if (navigator.clipboard.getData) {
+                const dataTransfer = await navigator.clipboard.getData("application/x-moz-file");
+                if (dataTransfer && dataTransfer.files && dataTransfer.files.length > 0) {
+                    const file = dataTransfer.files[0];
+                    return {
+                        type: getFileType(file.type),
+                        mimeType: file.type || 'application/octet-stream',
+                        data: file,
+                        extension: mimeTypeToExtension(file.type) || getExtensionFromFileName(file.name)
+                    };
+                }
+            }
+        } catch (dtError) {
+            console.log('DataTransfer API not available:', dtError);
+        }
+        
+        // No non-text content found
+        console.log('No non-text content found in clipboard');
         return null;
     } catch (error) {
         console.warn('Could not read clipboard data:', error);
+        if (error.name === 'NotAllowedError') {
+            showNotification('warning', 'Permission denied to access clipboard. Please grant permission when prompted.');
+        } else if (error.name === 'DataError' || error.message.includes('Document is not focused')) {
+            showNotification('info', 'Please click on the page before accessing clipboard content.');
+        }
         return null;
     }
+}
+
+/**
+ * Convert MIME type to file extension
+ * @param {string} mimeType - The MIME type
+ * @returns {string} The file extension including dot
+ */
+function mimeTypeToExtension(mimeType) {
+    const mimeToExt = {
+        // Images
+        'image/png': '.png',
+        'image/jpeg': '.jpg',
+        'image/jpg': '.jpg',
+        'image/gif': '.gif',
+        'image/webp': '.webp',
+        'image/bmp': '.bmp',
+        'image/svg+xml': '.svg',
+        'image/tiff': '.tiff',
+        // Documents
+        'application/pdf': '.pdf',
+        'application/msword': '.doc',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+        'application/vnd.ms-excel': '.xls',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+        'application/vnd.ms-powerpoint': '.ppt',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+        'text/plain': '.txt',
+        'text/html': '.html',
+        'text/css': '.css',
+        'text/javascript': '.js',
+        'application/json': '.json',
+        'application/xml': '.xml',
+        // Audio
+        'audio/mpeg': '.mp3',
+        'audio/wav': '.wav',
+        'audio/ogg': '.ogg',
+        'audio/webm': '.webm',
+        'audio/aac': '.aac',
+        // Video
+        'video/mp4': '.mp4',
+        'video/webm': '.webm',
+        'video/ogg': '.ogv',
+        'video/quicktime': '.mov',
+        // Archives
+        'application/zip': '.zip',
+        'application/x-rar-compressed': '.rar',
+        'application/x-tar': '.tar',
+        'application/gzip': '.gz'
+    };
+    
+    return mimeToExt[mimeType] || '.bin';
+}
+
+/**
+ * Get file extension from filename
+ * @param {string} filename - The filename
+ * @returns {string} The file extension including dot
+ */
+function getExtensionFromFileName(filename) {
+    if (!filename) return '.bin';
+    const parts = filename.split('.');
+    return parts.length > 1 ? '.' + parts[parts.length - 1].toLowerCase() : '.bin';
+}
+
+/**
+ * Convert image MIME type to file extension
+ * @param {string} imageType - The image MIME type
+ * @returns {string} The file extension
+ */
+function imageTypeToExtension(imageType) {
+    switch (imageType) {
+        case 'image/png': return '.png';
+        case 'image/jpeg': return '.jpg';
+        case 'image/gif': return '.gif';
+        case 'image/webp': return '.webp';
+        case 'image/bmp': return '.bmp';
+        case 'image/svg+xml': return '.svg';
+        default: return '.png'; // Default to PNG
+    }
+}
+
+/**
+ * Determine file type category from MIME type
+ * @param {string} mimeType - The MIME type
+ * @returns {string} The file type category
+ */
+function getFileType(mimeType) {
+    if (!mimeType) return 'file';
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('audio/')) return 'audio';
+    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.startsWith('text/')) return 'text';
+    if (mimeType.includes('pdf') || 
+        mimeType.includes('document') || 
+        mimeType.includes('sheet') || 
+        mimeType.includes('presentation')) {
+        return 'document';
+    }
+    if (mimeType.includes('zip') || 
+        mimeType.includes('compressed') || 
+        mimeType.includes('archive')) {
+        return 'archive';
+    }
+    return 'file';
 }
 
 /**
