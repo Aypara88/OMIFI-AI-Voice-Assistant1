@@ -44,6 +44,24 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Set up voice recognition toggle
+    const toggleVoiceButton = document.getElementById('toggleVoiceButton');
+    if (toggleVoiceButton) {
+        toggleVoiceButton.addEventListener('click', function() {
+            toggleVoiceRecognition();
+        });
+    }
+    
+    // Initialize WebRTC hardware if available
+    if (typeof initWebRTCHardware === 'function') {
+        try {
+            initWebRTCHardware();
+        } catch (error) {
+            console.error('Error initializing WebRTC hardware:', error);
+            showNotification('warning', 'Browser hardware access is limited. Use the desktop app for full functionality.');
+        }
+    }
+    
     // Display a welcome notification
     setTimeout(() => {
         showNotification('info', 'Welcome to the OMIFI Dashboard! Use the buttons to manage your voice assistant.');
@@ -234,6 +252,32 @@ function takeScreenshot() {
     button.disabled = true;
     button.textContent = 'Taking Screenshot...';
     
+    // Use WebRTC to capture screen if available
+    if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+        try {
+            // Use the WebRTC function to take screenshot
+            takeScreenshotFromBrowser();
+        } catch (error) {
+            console.error('Error with WebRTC screenshot:', error);
+            // Fall back to server-side screenshot
+            fallbackServerScreenshot();
+        }
+    } else {
+        // WebRTC not supported, use server-side method
+        fallbackServerScreenshot();
+    }
+    
+    // Re-enable button (the WebRTC function handles re-enabling separately)
+    setTimeout(() => {
+        button.disabled = false;
+        button.textContent = 'Take Screenshot';
+    }, 3000);
+}
+
+/**
+ * Fallback to server-side screenshot when WebRTC is not available
+ */
+function fallbackServerScreenshot() {
     fetch('/take-screenshot', {
         method: 'POST',
         headers: {
@@ -255,10 +299,6 @@ function takeScreenshot() {
     .catch(error => {
         console.error('Error taking screenshot:', error);
         showNotification('danger', 'Error taking screenshot. Please try again.');
-    })
-    .finally(() => {
-        button.disabled = false;
-        button.textContent = 'Take Screenshot';
     });
 }
 
@@ -270,6 +310,32 @@ function senseClipboard() {
     button.disabled = true;
     button.textContent = 'Sensing Clipboard...';
     
+    // Try to use browser clipboard API (WebRTC alternative)
+    if (navigator.clipboard && navigator.clipboard.readText) {
+        try {
+            // Use the WebRTC function
+            senseClipboardFromBrowser();
+        } catch (error) {
+            console.error('Error with WebRTC clipboard:', error);
+            // Fall back to server-side method
+            fallbackServerClipboard();
+        }
+    } else {
+        // Clipboard API not supported, use server-side method
+        fallbackServerClipboard();
+    }
+    
+    // Re-enable button (the WebRTC function handles re-enabling separately)
+    setTimeout(() => {
+        button.disabled = false;
+        button.textContent = 'Sense Clipboard';
+    }, 3000);
+}
+
+/**
+ * Fallback to server-side clipboard sensing when browser API is not available
+ */
+function fallbackServerClipboard() {
     fetch('/sense-clipboard', {
         method: 'POST',
         headers: {
@@ -295,10 +361,6 @@ function senseClipboard() {
     .catch(error => {
         console.error('Error sensing clipboard:', error);
         showNotification('danger', 'Error sensing clipboard. Please try again.');
-    })
-    .finally(() => {
-        button.disabled = false;
-        button.textContent = 'Sense Clipboard';
     });
 }
 

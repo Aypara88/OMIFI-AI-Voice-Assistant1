@@ -1,0 +1,48 @@
+# OMIFI Voice Assistant - Download & Installation Instructions
+
+## Overview 
+OMIFI is experiencing limitations in the Replit environment because web browsers cannot directly access your local microphone, clipboard, or screen. For full functionality with "Hey OMIFI" voice recognition that works with your actual PC hardware, you need to download and run it locally.
+
+## Download Instructions
+
+1. Download the complete source code using the "Download as ZIP" button at the top of this Replit page.
+
+2. Extract the ZIP file to a folder on your computer.
+
+3. Install the required dependencies by running:
+```
+pip install Flask==2.2.3 flask-sqlalchemy==3.0.3 gunicorn==23.0.0 Pillow==9.4.0 PyAudio==0.2.13 PyQt5==5.15.9 pyperclip==1.8.2 pyttsx3==2.90 qrcode==7.4.2 SpeechRecognition==3.10.0
+```
+
+4. If you have trouble installing PyAudio:
+   - Windows: Try `pip install pipwin` then `pipwin install pyaudio`
+   - macOS: Install portaudio with `brew install portaudio` first
+   - Linux: Install portaudio development package first (e.g., `sudo apt-get install portaudio19-dev`)
+
+## Running OMIFI Locally
+
+1. Open a terminal/command prompt and navigate to the extracted folder.
+
+2. Run OMIFI with: `python main.py`
+
+3. You should see the OMIFI icon appear in your system tray.
+
+4. Try saying "Hey OMIFI, take a screenshot" to test voice recognition.
+
+5. You can also access the web dashboard at http://localhost:5000
+
+## Troubleshooting
+
+If voice recognition isn't working:
+1. Make sure your microphone is working and properly connected
+2. Check if your system has granted microphone permissions to Python/OMIFI
+3. Try running as administrator (on Windows) for better hardware access
+4. If you see PyAudio or PortAudio errors, follow the installation instructions above
+
+## Features Working Locally
+
+When running on your local machine, OMIFI will have full access to:
+- Your microphone for real-time "Hey OMIFI" voice recognition
+- Your clipboard for real-time content sensing
+- Your screen for real-time screenshots
+- System tray integration for easy access

@@ -437,11 +437,28 @@ def take_screenshot():
         from omifi.storage import Storage
         storage = Storage()
         
-        from omifi.screenshot import ScreenshotManager
-        screenshot_manager = ScreenshotManager(storage)
-        
-        # Take screenshot
-        filepath = screenshot_manager.take_screenshot()
+        # Check if we have a direct screenshot from the browser via WebRTC
+        if 'screenshot' in request.files:
+            logger.info("Received screenshot from browser WebRTC")
+            screenshot_file = request.files['screenshot']
+            
+            # Process the screenshot using PIL
+            from PIL import Image
+            from io import BytesIO
+            
+            # Open the image
+            img = Image.open(BytesIO(screenshot_file.read()))
+            
+            # Save it using storage
+            filepath = storage.save_screenshot(img)
+            logger.info(f"Browser screenshot saved to {filepath}")
+        else:
+            # Fall back to traditional screenshot capture
+            from omifi.screenshot import ScreenshotManager
+            screenshot_manager = ScreenshotManager(storage)
+            
+            # Take screenshot
+            filepath = screenshot_manager.take_screenshot()
         
         if filepath:
             # Get filename from path
@@ -469,11 +486,22 @@ def sense_clipboard():
         from omifi.storage import Storage
         storage = Storage()
         
-        from omifi.clipboard import ClipboardManager
-        clipboard_manager = ClipboardManager(storage)
-        
-        # Sense clipboard
-        content_type, content = clipboard_manager.sense_clipboard()
+        # Check if we have direct clipboard content from the browser
+        if 'content' in request.form:
+            logger.info("Received clipboard content from browser")
+            content = request.form.get('content')
+            content_type = request.form.get('type', 'text')
+            
+            # Save content directly
+            filepath = storage.save_clipboard_content(content, content_type)
+            logger.info(f"Browser clipboard content saved to {filepath}")
+        else:
+            # Fall back to traditional clipboard sensing
+            from omifi.clipboard import ClipboardManager
+            clipboard_manager = ClipboardManager(storage)
+            
+            # Sense clipboard
+            content_type, content = clipboard_manager.sense_clipboard()
         
         if content:
             # Get filepath from storage
