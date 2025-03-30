@@ -14,6 +14,36 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up periodic status refresh
     setInterval(refreshStatus, 10000); // Check status every 10 seconds
     
+    // Set up QR code modal handler
+    const qrModal = document.getElementById('qrModal');
+    if (qrModal) {
+        qrModal.addEventListener('show.bs.modal', function(event) {
+            const button = event.relatedTarget;
+            const qrUrl = button.getAttribute('data-qr-url');
+            const title = button.getAttribute('data-title');
+            
+            // Update the modal's content
+            const modalTitle = qrModal.querySelector('#qrModalLabel');
+            const modalDescription = qrModal.querySelector('.qr-modal-description');
+            const qrImage = qrModal.querySelector('#qrCodeImage');
+            
+            if (title) {
+                modalTitle.textContent = title;
+            } else {
+                modalTitle.textContent = 'Scan QR Code';
+            }
+            
+            if (qrUrl) {
+                qrImage.src = qrUrl;
+                qrImage.style.display = 'block';
+                modalDescription.textContent = 'Scan this QR code with your phone to download the content';
+            } else {
+                qrImage.style.display = 'none';
+                modalDescription.textContent = 'QR code not available';
+            }
+        });
+    }
+    
     // Display a welcome notification
     setTimeout(() => {
         showNotification('info', 'Welcome to the OMIFI Dashboard! Use the buttons to manage your voice assistant.');
@@ -146,7 +176,8 @@ function showNotification(type, message) {
 function fetchClipboardContent(event) {
     event.preventDefault();
     
-    const url = event.currentTarget.href;
+    // Get the URL from the data attribute or href
+    const url = event.currentTarget.dataset.clipboardUrl || event.currentTarget.href;
     
     fetch(url)
         .then(response => {
@@ -191,7 +222,7 @@ function fetchClipboardContent(event) {
         })
         .catch(error => {
             console.error('Error fetching clipboard content:', error);
-            alert('Error loading clipboard content. Please try again.');
+            showNotification('danger', 'Error loading clipboard content. Please try again.');
         });
 }
 

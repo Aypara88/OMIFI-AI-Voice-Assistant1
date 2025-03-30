@@ -105,7 +105,7 @@
                         {% if screenshots %}
                         <div class="list-group list-group-flush">
                             {% for screenshot in screenshots %}
-                            <a href="{{ url_for('get_screenshot', filepath=screenshot.filepath) }}" target="_blank" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2">
                                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -114,8 +114,20 @@
                                     </svg>
                                     {{ screenshot.filename }}
                                 </div>
-                                <small class="text-muted">{{ screenshot.timestamp.replace('T', ' ').split('.')[0] }}</small>
-                            </a>
+                                <div class="d-flex align-items-center">
+                                    <small class="text-muted me-3">{{ screenshot.timestamp.replace('T', ' ').split('.')[0] }}</small>
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                            Actions
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end">
+                                            <li><a class="dropdown-item" href="{{ url_for('get_screenshot', filepath=screenshot.filepath) }}" target="_blank">Open</a></li>
+                                            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#qrModal" data-qr-url="{{ url_for('get_screenshot_qr', filepath=screenshot.filepath) }}" data-title="Scan to Download Screenshot">QR Code</a></li>
+                                            <li><a class="dropdown-item" href="{{ url_for('get_screenshot', filepath=screenshot.filepath) }}" download>Download</a></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
                             {% endfor %}
                         </div>
                         {% else %}
@@ -136,7 +148,7 @@
                         {% if clipboard %}
                         <div class="list-group list-group-flush">
                             {% for clip in clipboard %}
-                            <a href="{{ url_for('get_clipboard', filepath=clip.filepath) }}" onclick="fetchClipboardContent(event)" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="me-2">
                                         <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
@@ -144,8 +156,20 @@
                                     </svg>
                                     {{ clip.type|capitalize }} content
                                 </div>
-                                <small class="text-muted">{{ clip.timestamp.replace('T', ' ').split('.')[0] }}</small>
-                            </a>
+                                <div class="d-flex align-items-center">
+                                    <small class="text-muted me-3">{{ clip.timestamp.replace('T', ' ').split('.')[0] }}</small>
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                            Actions
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end">
+                                            <li><a class="dropdown-item" href="#" onclick="fetchClipboardContent(event)" data-clipboard-url="{{ url_for('get_clipboard', filepath=clip.filepath) }}">View</a></li>
+                                            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#qrModal" data-qr-url="{{ url_for('get_clipboard_qr', filepath=clip.filepath) }}" data-title="Scan to Download Clipboard Content">QR Code</a></li>
+                                            <li><a class="dropdown-item" href="{{ url_for('get_clipboard', filepath=clip.filepath) }}" download>Download</a></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
                             {% endfor %}
                         </div>
                         {% else %}
@@ -154,6 +178,25 @@
                         </div>
                         {% endif %}
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Code Modal -->
+    <div class="modal fade" id="qrModal" tabindex="-1" aria-labelledby="qrModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="qrModalLabel">Scan QR Code</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <p class="qr-modal-description">Scan this QR code with your phone to download the content</p>
+                    <img id="qrCodeImage" src="" alt="QR Code" class="img-fluid my-3" style="max-width: 250px;">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>

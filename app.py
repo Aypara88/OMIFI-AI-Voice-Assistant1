@@ -12,6 +12,7 @@ import subprocess
 import time
 from datetime import datetime
 from flask import Flask, render_template, jsonify, send_file, request, redirect, url_for
+import qrcode
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -221,26 +222,44 @@ def stop_omifi():
             # Check if we're running in dummy mode
             if os.path.exists(DUMMY_FLAG_FILE):
                 # Remove the dummy flag file
-                os.remove(DUMMY_FLAG_FILE)
-                success = True
-                message = "OMIFI web-only mode stopped"
+                try:
+                    os.remove(DUMMY_FLAG_FILE)
+                    success = True
+                    message = "OMIFI web-only mode stopped"
+                except Exception as e:
+                    logger.error(f"Error removing dummy flag file: {e}")
+                    message = f"Failed to remove dummy flag file: {e}"
             else:
                 # This is a simplistic approach - in a real app, you'd use a proper IPC mechanism
-                if sys.platform == 'win32':
-                    # Windows
-                    subprocess.run(["taskkill", "/F", "/IM", "python.exe", "/T"], check=False)
-                else:
-                    # Linux/macOS
-                    subprocess.run("pkill -f 'python.*main.py'", shell=True, check=False)
-                
-                # Wait a bit to ensure it's stopped
-                time.sleep(1)
+                try:
+                    if sys.platform == 'win32':
+                        # Windows
+                        subprocess.run(["taskkill", "/F", "/IM", "python.exe", "/T"], check=False)
+                    else:
+                        # Linux/macOS - more aggressive approach
+                        subprocess.run("pkill -9 -f 'python.*main.py'", shell=True, check=False)
+                        
+                    # Wait a bit to ensure it's stopped
+                    time.sleep(1)
+                except Exception as e:
+                    logger.error(f"Error stopping processes: {e}")
             
             # Check if it's really stopped
-            if not get_omifi_status():
+            running_check = get_omifi_status()
+            if not running_check:
                 success = True
                 if "web-only" not in message:
                     message = "OMIFI stopped successfully"
+            else:
+                # Force-stop the dummy file if it exists
+                if os.path.exists(DUMMY_FLAG_FILE):
+                    try:
+                        os.remove(DUMMY_FLAG_FILE)
+                        success = True
+                        message = "OMIFI web-only mode forcibly stopped"
+                    except Exception as e:
+                        logger.error(f"Error force-removing dummy flag file: {e}")
+                        message = f"Failed to force-remove dummy flag file: {e}"
         except Exception as e:
             logger.error(f"Error stopping OMIFI: {e}")
             message = str(e)
@@ -292,6 +311,52 @@ def get_screenshot(filepath):
             return "File not found or invalid path", 404
     except Exception as e:
         logger.error(f"Error retrieving screenshot: {e}")
+        return str(e), 500
+
+@app.route('/qr/screenshot/<path:filepath>')
+def get_screenshot_qr(filepath):
+    """Generate QR code for downloading a screenshot."""
+    try:
+        from io import BytesIO
+        
+        # Create the full URL to the screenshot
+        base_url = request.url_root.rstrip('/')
+        screenshot_url = f"{base_url}/screenshots/{filepath}"
+        
+        # Generate QR code using simple version to avoid import issues
+        img = qrcode.make(screenshot_url)
+        
+        # Save to bytes buffer
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        
+        return send_file(buffer, mimetype='image/png')
+    except Exception as e:
+        logger.error(f"Error generating QR code for screenshot: {e}")
+        return str(e), 500
+
+@app.route('/qr/clipboard/<path:filepath>')
+def get_clipboard_qr(filepath):
+    """Generate QR code for downloading clipboard content."""
+    try:
+        from io import BytesIO
+        
+        # Create the full URL to the clipboard
+        base_url = request.url_root.rstrip('/')
+        clipboard_url = f"{base_url}/clipboard/{filepath}"
+        
+        # Generate QR code using simple version to avoid import issues
+        img = qrcode.make(clipboard_url)
+        
+        # Save to bytes buffer
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        
+        return send_file(buffer, mimetype='image/png')
+    except Exception as e:
+        logger.error(f"Error generating QR code for clipboard: {e}")
         return str(e), 500
 
 if __name__ == '__main__':

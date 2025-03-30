@@ -14,5 +14,6 @@ dependencies = [
     "pyperclip>=1.9.0",
     "pyqt5>=5.15.11",
     "pyttsx3>=2.98",
+    "qrcode>=8.0",
     "speechrecognition>=3.14.2",
 ]
