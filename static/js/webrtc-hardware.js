@@ -259,14 +259,78 @@ function toggleVoiceRecognition() {
  * Start voice recognition
  */
 function startVoiceRecognition() {
-    if (recognition) {
-        try {
-            recognition.start();
-            showNotification('success', 'Voice recognition started');
-        } catch (error) {
-            console.error('Error starting speech recognition:', error);
-            showNotification('danger', 'Error starting voice recognition');
-        }
+    if (!recognition) {
+        showNotification('warning', 'Voice recognition is not supported in your browser');
+        return;
+    }
+    
+    try {
+        // Always try to get fresh microphone access to ensure it's working
+        navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+            .then(stream => {
+                // Stop the stream immediately after confirming access
+                stream.getTracks().forEach(track => track.stop());
+                
+                // Update status
+                updateMicrophoneStatus(true);
+                microphoneAccessGranted = true;
+                
+                // Now start recognition with confirmed microphone access
+                try {
+                    recognition.start();
+                    recognitionActive = true;
+                    wakeWordDetected = false;
+                    localStorage.setItem('voiceRecognitionActive', 'true');
+                    
+                    // Update UI
+                    document.getElementById('voiceStatus').textContent = 'Listening for wake word "Hey OMIFI"...';
+                    document.getElementById('toggleVoiceButton').textContent = 'Stop Voice Recognition';
+                    document.getElementById('toggleVoiceButton').classList.remove('btn-success');
+                    document.getElementById('toggleVoiceButton').classList.add('btn-danger');
+                    
+                    // Hide reconnect button if shown
+                    const reconnectBtn = document.getElementById('microphoneReconnect');
+                    if (reconnectBtn) {
+                        reconnectBtn.style.display = 'none';
+                    }
+                    
+                    showNotification('success', 'Voice recognition started!');
+                } catch (e) {
+                    console.error('Error starting recognition after microphone access:', e);
+                    showNotification('warning', 'Error starting recognition: ' + e.message);
+                }
+            })
+            .catch(error => {
+                console.error('Microphone access error in startVoiceRecognition:', error);
+                updateMicrophoneStatus(false);
+                
+                // Show different messages based on error type
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    showNotification('danger', 'Microphone access denied. Please enable microphone access in your browser settings.');
+                } else {
+                    showNotification('warning', 'Could not access microphone. Using simulation mode instead.');
+                    
+                    // Use simulation mode
+                    recognitionActive = true;
+                    wakeWordDetected = false;
+                    localStorage.setItem('voiceRecognitionActive', 'true');
+                    
+                    // Update UI to show simulated mode
+                    document.getElementById('voiceStatus').textContent = 'Simulation mode active (no microphone)';
+                    document.getElementById('toggleVoiceButton').textContent = 'Stop Simulation';
+                    document.getElementById('toggleVoiceButton').classList.remove('btn-success');
+                    document.getElementById('toggleVoiceButton').classList.add('btn-warning');
+                    
+                    // Show reconnect button
+                    const reconnectBtn = document.getElementById('microphoneReconnect');
+                    if (reconnectBtn) {
+                        reconnectBtn.style.display = 'block';
+                    }
+                }
+            });
+    } catch (error) {
+        console.error('Error in startVoiceRecognition:', error);
+        showNotification('danger', 'Error starting voice recognition: ' + error.message);
     }
 }
 
@@ -275,14 +339,25 @@ function startVoiceRecognition() {
  */
 function stopVoiceRecognition() {
     if (recognition) {
-        recognitionActive = false;
         try {
-            recognition.stop();
-            showNotification('info', 'Voice recognition stopped');
+            // Check if recognition is actually running
+            if (recognition && recognitionActive) {
+                recognition.stop();
+            }
         } catch (error) {
-            console.error('Error stopping speech recognition:', error);
+            console.error('Error stopping voice recognition:', error);
+            // Non-critical error, we proceed with UI reset anyway
         }
     }
+    
+    // Always update state variables and UI
+    recognitionActive = false;
+    wakeWordDetected = false;
+    localStorage.setItem('voiceRecognitionActive', 'false');
+    
+    // Reset UI
+    resetVoiceRecognitionUI();
+    showNotification('info', 'Voice recognition stopped');
 }
 
 /**
@@ -563,15 +638,24 @@ function updateMicrophoneStatus(available) {
  * Reconnect the microphone
  */
 function reconnectMicrophone() {
+    // Reset count if it's too high
     if (reconnectAttempts >= maxReconnectAttempts) {
-        showNotification('warning', 'Max reconnect attempts reached. Please refresh the page.');
-        return;
+        reconnectAttempts = 0;
+        showNotification('info', 'Resetting reconnection attempts...');
     }
     
     reconnectAttempts++;
     showNotification('info', 'Attempting to reconnect microphone...');
     
-    navigator.mediaDevices.getUserMedia({ audio: true })
+    // Show spinner on reconnect button if it exists
+    const reconnectBtn = document.getElementById('microphoneReconnect');
+    if (reconnectBtn) {
+        reconnectBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Reconnecting...';
+        reconnectBtn.disabled = true;
+    }
+    
+    // Try to request microphone access
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
         .then(stream => {
             // Microphone is available
             stream.getTracks().forEach(track => track.stop()); // Stop the stream
@@ -579,16 +663,66 @@ function reconnectMicrophone() {
             reconnectAttempts = 0;
             
             if (recognitionActive) {
-                stopVoiceRecognition();
-                startVoiceRecognition();
+                // Restart voice recognition
+                try {
+                    if (recognition) {
+                        recognition.stop();
+                    }
+                } catch (e) {
+                    console.log('Error stopping recognition before restart:', e);
+                }
+                
+                setTimeout(() => {
+                    startVoiceRecognition();
+                }, 500);
+            }
+            
+            // Reset reconnect button
+            if (reconnectBtn) {
+                reconnectBtn.innerHTML = 'Reconnect Microphone';
+                reconnectBtn.disabled = false;
+                reconnectBtn.style.display = 'none'; // Hide it since we're connected
             }
             
             showNotification('success', 'Microphone reconnected!');
+            
+            // Update voice status
+            const voiceStatus = document.getElementById('voiceStatus');
+            if (voiceStatus) {
+                if (recognitionActive) {
+                    voiceStatus.textContent = 'Listening for wake word "Hey OMIFI"...';
+                } else {
+                    voiceStatus.textContent = 'Voice recognition ready. Click Start to begin.';
+                }
+            }
         })
         .catch(error => {
             console.error('Microphone reconnect error:', error);
             updateMicrophoneStatus(false);
-            showNotification('danger', `Failed to reconnect microphone (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+            
+            // Reset reconnect button
+            if (reconnectBtn) {
+                reconnectBtn.innerHTML = 'Retry Microphone Access';
+                reconnectBtn.disabled = false;
+                reconnectBtn.style.display = 'block';
+            }
+            
+            // Show different messages based on the error
+            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                showNotification('danger', 'Microphone access denied. Please enable microphone access in your browser settings.');
+            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                showNotification('warning', 'No microphone detected. Please connect a microphone and try again.');
+            } else {
+                showNotification('warning', `Failed to reconnect microphone (attempt ${reconnectAttempts}/${maxReconnectAttempts}). Will try simulated mode.`);
+                
+                // Enable simulated mode for training
+                if (voiceTrainingActive) {
+                    showNotification('info', 'Switching to simulation mode for training.');
+                }
+            }
+            
+            // In web-only mode, we can use server-side fall backs and simulation
+            document.getElementById('voiceStatus').textContent = 'Using simulation mode for voice functions.';
         });
 }
 
@@ -625,7 +759,8 @@ function applyVoiceSettings() {
  */
 function startWakeWordTraining() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showNotification('warning', 'Microphone access not supported in your browser');
+        // Simulate training if no microphone is available
+        simulateWakeWordTraining();
         return;
     }
     
@@ -643,6 +778,9 @@ function startWakeWordTraining() {
     // Record the user saying the wake word
     navigator.mediaDevices.getUserMedia({ audio: true })
         .then(stream => {
+            // Update microphone status to available since we successfully got access
+            updateMicrophoneStatus(true);
+            
             const mediaRecorder = new MediaRecorder(stream);
             const chunks = [];
             
@@ -661,22 +799,7 @@ function startWakeWordTraining() {
                 saveWakeWordSample(audioBlob);
                 
                 // Update progress
-                currentPhraseAttempts++;
-                const progress = Math.min((currentPhraseAttempts / 3) * 100, 100);
-                wakeWordProgress.style.width = progress + '%';
-                wakeWordProgress.setAttribute('aria-valuenow', progress);
-                
-                // Enable the button for next recording
-                startButton.disabled = false;
-                startButton.textContent = 'Start Recording';
-                
-                // If we have 3 samples, show next button
-                if (currentPhraseAttempts >= 3) {
-                    document.getElementById('nextToCommands').style.display = 'block';
-                    showNotification('success', 'Wake word training complete!');
-                } else {
-                    showNotification('info', `Please record ${3 - currentPhraseAttempts} more sample(s)`);
-                }
+                completeWakeWordTrainingStep();
             });
             
             // Record for 2 seconds
@@ -687,10 +810,58 @@ function startWakeWordTraining() {
         })
         .catch(error => {
             console.error('Microphone access error:', error);
-            showNotification('danger', 'Could not access microphone. Please check permissions.');
-            startButton.disabled = false;
-            startButton.textContent = 'Start Recording';
+            showNotification('warning', 'Using simulation mode for training due to microphone access issues.');
+            simulateWakeWordTraining();
         });
+}
+
+/**
+ * Simulate wake word training when microphone is not available
+ */
+function simulateWakeWordTraining() {
+    showNotification('info', 'Simulating training (microphone not available)');
+    
+    // Get wake word from element
+    const wakeWord = document.getElementById('wakeWordPhrase').textContent;
+    currentTrainingPhrase = wakeWord.toLowerCase();
+    
+    // Create a simulated audio sample
+    const dummyAudio = new Uint8Array(1000).fill(128);
+    const audioBlob = new Blob([dummyAudio], { type: 'audio/webm' });
+    
+    // Save simulated wake word sample
+    saveWakeWordSample(audioBlob);
+    
+    // Update UI to show progress
+    setTimeout(() => {
+        completeWakeWordTrainingStep();
+    }, 1000);
+}
+
+/**
+ * Complete a wake word training step
+ */
+function completeWakeWordTrainingStep() {
+    const wakeWordProgress = document.getElementById('wakeWordProgress');
+    const startButton = document.getElementById('startWakeWordTraining');
+    
+    // Update progress
+    currentPhraseAttempts++;
+    const progress = Math.min((currentPhraseAttempts / 3) * 100, 100);
+    wakeWordProgress.style.width = progress + '%';
+    wakeWordProgress.setAttribute('aria-valuenow', progress);
+    
+    // Enable the button for next recording
+    startButton.disabled = false;
+    startButton.textContent = 'Start Recording';
+    
+    // If we have 3 samples, show next button
+    if (currentPhraseAttempts >= 3) {
+        document.getElementById('nextToCommands').style.display = 'block';
+        showNotification('success', 'Wake word training complete!');
+    } else {
+        showNotification('info', `Please record ${3 - currentPhraseAttempts} more sample(s)`);
+    }
 }
 
 /**
@@ -698,7 +869,8 @@ function startWakeWordTraining() {
  */
 function startCommandTraining() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showNotification('warning', 'Microphone access not supported in your browser');
+        // Simulate training if no microphone is available
+        simulateCommandTraining();
         return;
     }
     
@@ -716,6 +888,9 @@ function startCommandTraining() {
     // Record the user saying the command
     navigator.mediaDevices.getUserMedia({ audio: true })
         .then(stream => {
+            // Update microphone status to available since we successfully got access
+            updateMicrophoneStatus(true);
+            
             const mediaRecorder = new MediaRecorder(stream);
             const chunks = [];
             
@@ -749,10 +924,39 @@ function startCommandTraining() {
         })
         .catch(error => {
             console.error('Microphone access error:', error);
-            showNotification('danger', 'Could not access microphone. Please check permissions.');
-            startButton.disabled = false;
-            startButton.textContent = 'Start Recording';
+            showNotification('warning', 'Using simulation mode for training due to microphone access issues.');
+            simulateCommandTraining();
         });
+}
+
+/**
+ * Simulate command training when microphone is not available
+ */
+function simulateCommandTraining() {
+    showNotification('info', 'Simulating command training (microphone not available)');
+    
+    // Get command from element
+    const command = document.getElementById('commandPhrase').textContent;
+    currentTrainingPhrase = command.toLowerCase();
+    
+    // Create a simulated audio sample
+    const dummyAudio = new Uint8Array(1000).fill(128);
+    const audioBlob = new Blob([dummyAudio], { type: 'audio/webm' });
+    
+    // Create a loading effect
+    const startButton = document.getElementById('startCommandTraining');
+    startButton.disabled = true;
+    startButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Simulating...';
+    
+    // Save simulated command sample
+    saveCommandSample(audioBlob);
+    
+    // Update UI to show progress after a delay
+    setTimeout(() => {
+        updateCommandTrainingProgress();
+        startButton.disabled = false;
+        startButton.textContent = 'Start Recording';
+    }, 1500);
 }
 
 /**
