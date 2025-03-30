@@ -1,7 +1,12 @@
+"""
+Storage module for the OMIFI assistant.
+"""
+
 import os
+import json
+import time
 import logging
 from datetime import datetime
-import json
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -19,25 +24,26 @@ class Storage:
             base_dir (str, optional): Base directory for storage. Defaults to user's home directory.
         """
         if base_dir is None:
-            # Default to a directory in the user's home folder
-            self.base_dir = os.path.join(os.path.expanduser("~"), "OMIFI_Data")
+            self.base_dir = os.path.expanduser("~/.omifi")
         else:
             self.base_dir = base_dir
             
-        # Create subdirectories for different types of data
-        self.screenshots_dir = os.path.join(self.base_dir, "Screenshots")
-        self.clipboard_dir = os.path.join(self.base_dir, "Clipboard")
+        # Create base directory if it doesn't exist
+        os.makedirs(self.base_dir, exist_ok=True)
         
-        # Ensure directories exist
+        # Create subdirectories
+        self.screenshots_dir = os.path.join(self.base_dir, "screenshots")
+        self.clipboard_dir = os.path.join(self.base_dir, "clipboard")
+        
         os.makedirs(self.screenshots_dir, exist_ok=True)
         os.makedirs(self.clipboard_dir, exist_ok=True)
         
-        # Metadata file to track stored items
-        self.metadata_file = os.path.join(self.base_dir, "metadata.json")
+        # Metadata file path
+        self.metadata_path = os.path.join(self.base_dir, "metadata.json")
+        
+        # Load metadata
         self.metadata = self._load_metadata()
         
-        logger.info(f"Storage initialized at {self.base_dir}")
-    
     def _load_metadata(self):
         """
         Load metadata from file or create a new metadata structure.
@@ -45,28 +51,28 @@ class Storage:
         Returns:
             dict: Metadata dictionary
         """
-        if os.path.exists(self.metadata_file):
+        if os.path.exists(self.metadata_path):
             try:
-                with open(self.metadata_file, 'r') as f:
+                with open(self.metadata_path, 'r') as f:
                     return json.load(f)
             except Exception as e:
                 logger.error(f"Error loading metadata: {e}")
         
-        # Create default metadata structure
+        # Default metadata structure
         return {
             "screenshots": [],
             "clipboard": []
         }
-    
+        
     def _save_metadata(self):
         """Save metadata to file."""
         try:
-            with open(self.metadata_file, 'w') as f:
+            with open(self.metadata_path, 'w') as f:
                 json.dump(self.metadata, f, indent=2)
         except Exception as e:
             logger.error(f"Error saving metadata: {e}")
     
-    def save_screenshot(self, screenshot, filename):
+    def save_screenshot(self, screenshot, filename=None):
         """
         Save a screenshot to storage.
         
@@ -77,21 +83,25 @@ class Storage:
         Returns:
             str: Path to the saved screenshot
         """
+        if filename is None:
+            timestamp = int(time.time())
+            filename = f"screenshot_{timestamp}.png"
+        
         filepath = os.path.join(self.screenshots_dir, filename)
         
         try:
-            # Save the image
             screenshot.save(filepath)
             
-            # Update metadata
-            screenshot_info = {
+            # Add to metadata
+            screenshot_meta = {
+                "filepath": filepath,
                 "filename": filename,
-                "path": filepath,
                 "timestamp": datetime.now().isoformat(),
-                "size": os.path.getsize(filepath)
+                "width": screenshot.width,
+                "height": screenshot.height
             }
             
-            self.metadata["screenshots"].append(screenshot_info)
+            self.metadata["screenshots"].append(screenshot_meta)
             self._save_metadata()
             
             return filepath
@@ -100,34 +110,37 @@ class Storage:
             logger.error(f"Error saving screenshot: {e}")
             return None
     
-    def save_clipboard_content(self, content, filename):
+    def save_clipboard_content(self, content, content_type="text", filename=None):
         """
         Save clipboard content to storage.
         
         Args:
             content: Clipboard content (text for now)
+            content_type: Type of content (text, image, etc.)
             filename: Name for the saved file
             
         Returns:
             str: Path to the saved content
         """
+        if filename is None:
+            timestamp = int(time.time())
+            filename = f"clipboard_{timestamp}.txt"
+        
         filepath = os.path.join(self.clipboard_dir, filename)
         
         try:
-            # Save the content
-            with open(filepath, 'w', encoding='utf-8') as f:
+            with open(filepath, 'w') as f:
                 f.write(content)
             
-            # Update metadata
-            clipboard_info = {
+            # Add to metadata
+            clipboard_meta = {
+                "filepath": filepath,
                 "filename": filename,
-                "path": filepath,
                 "timestamp": datetime.now().isoformat(),
-                "size": os.path.getsize(filepath),
-                "type": "text"
+                "type": content_type
             }
             
-            self.metadata["clipboard"].append(clipboard_info)
+            self.metadata["clipboard"].append(clipboard_meta)
             self._save_metadata()
             
             return filepath
@@ -146,14 +159,17 @@ class Storage:
         if not self.metadata["screenshots"]:
             return None
             
-        # Sort by timestamp and get the most recent
-        screenshots = sorted(
-            self.metadata["screenshots"], 
-            key=lambda x: x["timestamp"], 
+        # Sort by timestamp (newest first)
+        sorted_screenshots = sorted(
+            self.metadata["screenshots"],
+            key=lambda x: x.get("timestamp", ""),
             reverse=True
         )
         
-        return screenshots[0]["path"] if screenshots else None
+        if sorted_screenshots:
+            return sorted_screenshots[0]["filepath"]
+            
+        return None
     
     def get_last_clipboard_content(self):
         """
@@ -165,25 +181,23 @@ class Storage:
         if not self.metadata["clipboard"]:
             return None, None
             
-        # Sort by timestamp and get the most recent
-        clipboard_items = sorted(
-            self.metadata["clipboard"], 
-            key=lambda x: x["timestamp"], 
+        # Sort by timestamp (newest first)
+        sorted_clipboard = sorted(
+            self.metadata["clipboard"],
+            key=lambda x: x.get("timestamp", ""),
             reverse=True
         )
         
-        if not clipboard_items:
-            return None, None
-            
-        filepath = clipboard_items[0]["path"]
-        
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return filepath, content
-        except Exception as e:
-            logger.error(f"Error reading clipboard content: {e}")
-            return filepath, None
+        if sorted_clipboard:
+            filepath = sorted_clipboard[0]["filepath"]
+            try:
+                with open(filepath, 'r') as f:
+                    content = f.read()
+                return filepath, content
+            except Exception as e:
+                logger.error(f"Error reading clipboard content: {e}")
+                
+        return None, None
     
     def get_screenshots(self, limit=10):
         """
@@ -195,13 +209,14 @@ class Storage:
         Returns:
             list: List of screenshot metadata
         """
-        screenshots = sorted(
-            self.metadata["screenshots"], 
-            key=lambda x: x["timestamp"], 
+        # Sort by timestamp (newest first)
+        sorted_screenshots = sorted(
+            self.metadata["screenshots"],
+            key=lambda x: x.get("timestamp", ""),
             reverse=True
         )
         
-        return screenshots[:limit]
+        return sorted_screenshots[:limit]
     
     def get_clipboard_items(self, limit=10):
         """
@@ -213,10 +228,11 @@ class Storage:
         Returns:
             list: List of clipboard metadata
         """
-        clipboard_items = sorted(
-            self.metadata["clipboard"], 
-            key=lambda x: x["timestamp"], 
+        # Sort by timestamp (newest first)
+        sorted_clipboard = sorted(
+            self.metadata["clipboard"],
+            key=lambda x: x.get("timestamp", ""),
             reverse=True
         )
         
-        return clipboard_items[:limit]
+        return sorted_clipboard[:limit]

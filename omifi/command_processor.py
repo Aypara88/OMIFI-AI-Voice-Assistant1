@@ -1,9 +1,13 @@
-import logging
-import re
+"""
+Command processor module for the OMIFI assistant.
+"""
 
-from omifi.screenshot import ScreenshotManager
-from omifi.clipboard import ClipboardManager
-from omifi.text_to_speech import TextToSpeech
+import os
+import logging
+import subprocess
+from .text_to_speech import TextToSpeech
+from .screenshot import ScreenshotManager
+from .clipboard import ClipboardManager
 
 logger = logging.getLogger(__name__)
 
@@ -20,55 +24,40 @@ class CommandProcessor:
             storage: Storage instance for accessing stored data
         """
         self.storage = storage
-        self.tts = TextToSpeech()
+        
+        # Initialize text-to-speech
+        self.text_to_speech = TextToSpeech()
+        
+        # Initialize screenshot manager
         self.screenshot_manager = ScreenshotManager(storage)
+        
+        # Initialize clipboard manager
         self.clipboard_manager = ClipboardManager(storage)
         
-        # Define command patterns and their handlers
-        self.commands = [
-            {
-                'patterns': [
-                    r'take a screenshot',
-                    r'capture( the)? screen',
-                    r'screenshot'
-                ],
-                'handler': self._handle_screenshot
-            },
-            {
-                'patterns': [
-                    r'sense( my)? clipboard',
-                    r'get clipboard',
-                    r'copy clipboard',
-                    r'check clipboard'
-                ],
-                'handler': self._handle_sense_clipboard
-            },
-            {
-                'patterns': [
-                    r'read( this)? clipboard',
-                    r'read clipboard( content)?',
-                    r'read( the)? clipboard aloud'
-                ],
-                'handler': self._handle_read_clipboard
-            },
-            {
-                'patterns': [
-                    r'open( my)? last screenshot',
-                    r'show( my)? last screenshot',
-                    r'display( the)? last screenshot'
-                ],
-                'handler': self._handle_open_last_screenshot
-            },
-            {
-                'patterns': [
-                    r'help',
-                    r'what can you do',
-                    r'commands',
-                    r'list( of)? commands'
-                ],
-                'handler': self._handle_help
-            }
-        ]
+        # Command handlers
+        self.command_handlers = {
+            "screenshot": self._handle_screenshot,
+            "take a screenshot": self._handle_screenshot,
+            "capture screen": self._handle_screenshot,
+            
+            "clipboard": self._handle_sense_clipboard,
+            "sense clipboard": self._handle_sense_clipboard,
+            "check clipboard": self._handle_sense_clipboard,
+            
+            "read clipboard": self._handle_read_clipboard,
+            "read the clipboard": self._handle_read_clipboard,
+            "what's in the clipboard": self._handle_read_clipboard,
+            
+            "open screenshot": self._handle_open_last_screenshot,
+            "open last screenshot": self._handle_open_last_screenshot,
+            "show last screenshot": self._handle_open_last_screenshot,
+            
+            "help": self._handle_help,
+            "what can you do": self._handle_help,
+            "commands": self._handle_help
+        }
+        
+        logger.info("Command processor initialized")
     
     def process_command(self, text):
         """
@@ -80,86 +69,84 @@ class CommandProcessor:
         Returns:
             bool: True if a command was processed, False otherwise
         """
+        if not text:
+            return False
+            
         text = text.lower().strip()
-        logger.info(f"Processing command: {text}")
+        logger.debug(f"Processing command: {text}")
         
-        # Check each command pattern
-        for command in self.commands:
-            for pattern in command['patterns']:
-                if re.search(pattern, text, re.IGNORECASE):
-                    # Found a matching command
-                    logger.debug(f"Command matched pattern: {pattern}")
-                    return command['handler'](text)
+        # Check for exact matches
+        if text in self.command_handlers:
+            return self.command_handlers[text](text)
         
-        # No matching command found
-        logger.info("No matching command found")
-        self.tts.speak("I'm sorry, I didn't understand that command.")
+        # Check for partial matches
+        for command, handler in self.command_handlers.items():
+            if command in text:
+                return handler(text)
+        
+        logger.debug(f"No handler found for command: {text}")
         return False
     
     def _handle_screenshot(self, text):
         """Handle screenshot command."""
-        self.tts.speak("Taking a screenshot")
+        self.text_to_speech.speak("Taking a screenshot", block=False)
+        
         filepath = self.screenshot_manager.take_screenshot()
         
         if filepath:
-            self.tts.speak("Screenshot taken and saved")
+            self.text_to_speech.speak("Screenshot saved", block=False)
             return True
         else:
-            self.tts.speak("Sorry, I couldn't take a screenshot")
+            self.text_to_speech.speak("Failed to take screenshot", block=False)
             return False
     
     def _handle_sense_clipboard(self, text):
         """Handle clipboard sensing command."""
-        self.tts.speak("Sensing clipboard content")
+        self.text_to_speech.speak("Checking clipboard", block=False)
+        
         content_type, content = self.clipboard_manager.sense_clipboard()
         
         if content:
-            self.tts.speak("Clipboard content saved")
+            self.text_to_speech.speak("Clipboard content saved", block=False)
             return True
         else:
-            self.tts.speak("The clipboard is empty or I couldn't access it")
+            self.text_to_speech.speak("No clipboard content found", block=False)
             return False
     
     def _handle_read_clipboard(self, text):
         """Handle reading clipboard command."""
-        # Try to get the current clipboard content first
-        content = self.clipboard_manager.get_current_clipboard()
-        
-        # If no current content, try to get the last saved content
-        if not content:
-            _, content = self.clipboard_manager.get_last_clipboard_content()
+        filepath, content = self.storage.get_last_clipboard_content()
         
         if content:
-            # For very long content, summarize or truncate
-            if len(content) > 500:
-                truncated = content[:500] + "... (content truncated)"
-                self.tts.speak("Reading clipboard content: " + truncated)
-            else:
-                self.tts.speak("Reading clipboard content: " + content)
+            if len(content) > 200:
+                # If content is too long, just read the first part
+                content = content[:200] + "... and more"
+                
+            self.text_to_speech.speak(f"Clipboard contains: {content}", block=False)
             return True
         else:
-            self.tts.speak("There's no clipboard content to read")
+            self.text_to_speech.speak("No clipboard content available", block=False)
             return False
     
     def _handle_open_last_screenshot(self, text):
         """Handle opening the last screenshot."""
-        success = self.screenshot_manager.open_last_screenshot()
+        self.text_to_speech.speak("Opening the last screenshot", block=False)
         
-        if success:
-            self.tts.speak("Opening your last screenshot")
+        if self.screenshot_manager.open_last_screenshot():
             return True
         else:
-            self.tts.speak("Sorry, I couldn't find any screenshots")
+            self.text_to_speech.speak("No screenshot available", block=False)
             return False
     
     def _handle_help(self, text):
         """Handle help command."""
-        help_text = (
-            "I can help you with several tasks. Try saying: "
-            "Take a screenshot, "
-            "Sense my clipboard, "
-            "Read clipboard aloud, or "
-            "Open my last screenshot."
-        )
-        self.tts.speak(help_text)
+        help_text = """
+        I can help you with the following commands:
+        - Take a screenshot: Captures your screen
+        - Sense clipboard: Saves the current clipboard content
+        - Read clipboard: Reads aloud the saved clipboard content
+        - Open last screenshot: Opens the most recent screenshot
+        """
+        
+        self.text_to_speech.speak(help_text, block=False)
         return True

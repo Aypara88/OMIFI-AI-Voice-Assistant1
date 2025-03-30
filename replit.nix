@@ -1,5 +1,23 @@
 {pkgs}: {
   deps = [
+    pkgs.portaudio
+    pkgs.pulseaudio
+    pkgs.libglvnd
+    pkgs.xorg.libXdmcp
+    pkgs.xorg.libXau
+    pkgs.xorg.libxcb
+    pkgs.libxkbcommon
+    pkgs.xdg-utils
+    pkgs.fontconfig
+    pkgs.gnome2.pango
+    pkgs.xorg.libXrender
+    pkgs.xorg.libXrandr
+    pkgs.xorg.libXfixes
+    pkgs.xorg.libXext
+    pkgs.xorg.libXdamage
+    pkgs.xorg.libXcomposite
+    pkgs.xorg.libX11
+    pkgs.qt5.qtbase
     pkgs.zlib
     pkgs.tk
     pkgs.tcl

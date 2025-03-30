@@ -1,0 +1,135 @@
+/**
+ * OMIFI Dashboard Styles
+ */
+
+/* Dashboard general styles */
+body {
+    background-color: var(--bs-dark);
+    color: var(--bs-light);
+}
+
+/* Screenshot styles */
+.screenshot-card {
+    height: 220px;
+    margin-bottom: 1rem;
+    background-color: var(--bs-dark);
+    border: 1px solid var(--bs-gray-700);
+    transition: transform 0.2s;
+}
+
+.screenshot-card:hover {
+    transform: scale(1.02);
+    border-color: var(--bs-primary);
+}
+
+.screenshot-img {
+    max-height: 150px;
+    object-fit: contain;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.screenshot-img:hover {
+    transform: scale(1.05);
+}
+
+/* Clipboard styles */
+.clipboard-item {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.clipboard-item:hover {
+    background-color: rgba(var(--bs-primary-rgb), 0.1);
+}
+
+.clipboard-item.active {
+    background-color: var(--bs-primary);
+    color: white;
+}
+
+.clipboard-content {
+    max-height: 500px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family: monospace;
+    background-color: var(--bs-gray-900);
+    border-radius: 4px;
+    padding: 1rem;
+}
+
+/* Status indicator */
+.status-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-running {
+    background-color: var(--bs-success);
+    box-shadow: 0 0 8px var(--bs-success);
+}
+
+.status-stopped {
+    background-color: var(--bs-danger);
+}
+
+/* Modal styles */
+.modal-content {
+    background-color: var(--bs-gray-900);
+    border: 1px solid var(--bs-gray-700);
+}
+
+.modal-header {
+    border-bottom: 1px solid var(--bs-gray-700);
+}
+
+.modal-footer {
+    border-top: 1px solid var(--bs-gray-700);
+}
+
+/* Utility classes */
+.pre-wrap {
+    white-space: pre-wrap;
+}
+
+/* Card styles */
+.card {
+    background-color: var(--bs-gray-800);
+    border: 1px solid var(--bs-gray-700);
+}
+
+.card-header {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--bs-gray-700);
+}
+
+/* List group styles */
+.list-group-item {
+    background-color: var(--bs-gray-800);
+    border-color: var(--bs-gray-700);
+    color: var(--bs-light);
+}
+
+.list-group-item.active {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
+}
+
+.list-group-item:hover:not(.active):not(.disabled) {
+    background-color: var(--bs-gray-700);
+}
+
+/* Badge styles */
+.badge {
+    font-weight: normal;
+}
+
+/* Alert styles */
+.alert-info {
+    background-color: rgba(var(--bs-info-rgb), 0.2);
+    border-color: rgba(var(--bs-info-rgb), 0.3);
+    color: var(--bs-info);
+}

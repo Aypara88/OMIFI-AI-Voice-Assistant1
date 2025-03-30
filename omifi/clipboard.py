@@ -1,6 +1,10 @@
+"""
+Clipboard module for the OMIFI assistant.
+"""
+
+import time
 import logging
 import pyperclip
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +21,8 @@ class ClipboardManager:
             storage: Storage instance for saving clipboard content
         """
         self.storage = storage
-        self.current_clipboard = None
+        self.last_content = None
+        self.last_content_type = None
     
     def sense_clipboard(self):
         """
@@ -27,30 +32,28 @@ class ClipboardManager:
             tuple: (str, str) - Content type and clipboard content
         """
         try:
-            logger.info("Sensing clipboard...")
+            # Get clipboard content
+            content = pyperclip.paste()
             
-            # Get the current clipboard content
-            clipboard_content = pyperclip.paste()
-            
-            if not clipboard_content:
-                logger.info("Clipboard is empty")
+            # If content is empty or same as last sensed content, don't save
+            if not content or content == self.last_content:
+                logger.debug("Clipboard empty or unchanged")
                 return None, None
             
-            # Generate a timestamp for the filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Update last content
+            self.last_content = content
+            self.last_content_type = "text"  # Only supporting text for now
             
-            # Determine the content type and store it
-            # For now, we'll just handle text content
-            content_type = "text"
-            filename = f"clipboard_{timestamp}.txt"
+            # Save to storage
+            filepath = self.storage.save_clipboard_content(
+                content, 
+                content_type=self.last_content_type
+            )
             
-            # Save the clipboard content
-            filepath = self.storage.save_clipboard_content(clipboard_content, filename)
+            if filepath:
+                logger.info(f"Clipboard content saved to {filepath}")
             
-            logger.info(f"Clipboard content saved: {filepath}")
-            self.current_clipboard = clipboard_content
-            
-            return content_type, clipboard_content
+            return self.last_content_type, content
             
         except Exception as e:
             logger.error(f"Error sensing clipboard: {e}")
@@ -63,7 +66,7 @@ class ClipboardManager:
         Returns:
             str: Clipboard content or None if not available
         """
-        return self.current_clipboard
+        return self.last_content
     
     def get_last_clipboard_content(self):
         """

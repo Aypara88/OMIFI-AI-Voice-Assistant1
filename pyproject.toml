@@ -10,6 +10,7 @@ dependencies = [
     "gunicorn>=23.0.0",
     "pillow>=11.1.0",
     "psycopg2-binary>=2.9.10",
+    "pyaudio>=0.2.14",
     "pyperclip>=1.9.0",
     "pyqt5>=5.15.11",
     "pyttsx3>=2.98",

@@ -1,13 +1,18 @@
-import logging
-from PyQt5.QtWidgets import (QSystemTrayIcon, QMenu, QAction)
-from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import pyqtSlot
+"""
+System tray interface for the OMIFI assistant.
+"""
 
-from omifi.ui.dashboard import OmifiDashboard
-from omifi.screenshot import ScreenshotManager
-from omifi.clipboard import ClipboardManager
-from omifi.text_to_speech import TextToSpeech
-from omifi.ui.resources import get_icon_path
+import os
+import logging
+import threading
+from PyQt5.QtWidgets import (
+    QSystemTrayIcon, QMenu, QAction, QApplication
+)
+from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import Qt
+
+from .resources import get_icon_path
+from .dashboard import OmifiDashboard
 
 logger = logging.getLogger(__name__)
 
@@ -25,79 +30,82 @@ class OmifiSystemTray(QSystemTrayIcon):
             voice_recognizer: VoiceRecognizer instance
             storage: Storage instance
         """
-        super().__init__()
+        # Get tray icon
+        icon_path = get_icon_path("omifi_icon.svg")
+        icon = QIcon(icon_path)
+        
+        super().__init__(icon, app)
         
         self.app = app
         self.voice_recognizer = voice_recognizer
         self.storage = storage
         
-        # Initialize managers
-        self.screenshot_manager = ScreenshotManager(storage)
-        self.clipboard_manager = ClipboardManager(storage)
-        self.tts = TextToSpeech()
+        # Create command processor and managers
+        self.command_processor = voice_recognizer.command_processor
+        self.clipboard_manager = self.command_processor.clipboard_manager
+        self.screenshot_manager = self.command_processor.screenshot_manager
+        self.text_to_speech = self.command_processor.text_to_speech
         
-        # Track if dashboard is open
+        # Dashboard window
         self.dashboard = None
         
+        # Initialize UI
         self.init_ui()
-    
-    def init_ui(self):
-        """Initialize the system tray UI."""
-        # Set the tray icon
-        self.setIcon(QIcon(get_icon_path("omifi_icon.svg")))
-        self.setToolTip("OMIFI Voice Assistant")
-        
-        # Create the tray menu
-        tray_menu = QMenu()
-        
-        # Add actions to the menu
-        dashboard_action = QAction("Open Dashboard", self)
-        dashboard_action.triggered.connect(self.open_dashboard)
-        tray_menu.addAction(dashboard_action)
-        
-        tray_menu.addSeparator()
-        
-        # Voice recognition toggle
-        self.toggle_voice_action = QAction("Pause Voice Recognition", self)
-        self.toggle_voice_action.triggered.connect(self.toggle_voice_recognition)
-        tray_menu.addAction(self.toggle_voice_action)
-        
-        tray_menu.addSeparator()
-        
-        # Quick actions
-        screenshot_action = QAction("Take Screenshot", self)
-        screenshot_action.triggered.connect(self.take_screenshot)
-        tray_menu.addAction(screenshot_action)
-        
-        clipboard_action = QAction("Sense Clipboard", self)
-        clipboard_action.triggered.connect(self.sense_clipboard)
-        tray_menu.addAction(clipboard_action)
-        
-        tray_menu.addSeparator()
-        
-        # Quit action
-        quit_action = QAction("Quit OMIFI", self)
-        quit_action.triggered.connect(self.quit_application)
-        tray_menu.addAction(quit_action)
-        
-        # Set the menu
-        self.setContextMenu(tray_menu)
-        
-        # Connect signal for click on the tray icon
-        self.activated.connect(self.on_tray_icon_activated)
         
         # Show the tray icon
         self.show()
         
-        # Startup notification
-        self.showMessage(
-            "OMIFI Voice Assistant",
-            "OMIFI is running in the background.\nSay 'Hey OMIFI' to start using voice commands.",
-            QSystemTrayIcon.Information,
-            5000
-        )
+        logger.info("System tray initialized")
     
-    @pyqtSlot(QSystemTrayIcon.ActivationReason)
+    def init_ui(self):
+        """Initialize the system tray UI."""
+        # Create menu
+        menu = QMenu()
+        
+        # Status action (non-clickable)
+        status_action = QAction("OMIFI Voice Assistant", self)
+        status_action.setEnabled(False)
+        menu.addAction(status_action)
+        
+        menu.addSeparator()
+        
+        # Dashboard action
+        dashboard_action = QAction("Open Dashboard", self)
+        dashboard_action.triggered.connect(self.open_dashboard)
+        menu.addAction(dashboard_action)
+        
+        menu.addSeparator()
+        
+        # Toggle voice recognition
+        self.voice_toggle_action = QAction("Pause Voice Recognition", self)
+        self.voice_toggle_action.triggered.connect(self.toggle_voice_recognition)
+        menu.addAction(self.voice_toggle_action)
+        
+        menu.addSeparator()
+        
+        # Screenshot action
+        screenshot_action = QAction("Take Screenshot", self)
+        screenshot_action.triggered.connect(self.take_screenshot)
+        menu.addAction(screenshot_action)
+        
+        # Clipboard action
+        clipboard_action = QAction("Sense Clipboard", self)
+        clipboard_action.triggered.connect(self.sense_clipboard)
+        menu.addAction(clipboard_action)
+        
+        menu.addSeparator()
+        
+        # Quit action
+        quit_action = QAction("Quit", self)
+        quit_action.triggered.connect(self.quit_application)
+        menu.addAction(quit_action)
+        
+        # Set the menu
+        self.setContextMenu(menu)
+        
+        # Connect the activated signal
+        self.activated.connect(self.on_tray_icon_activated)
+    
     def on_tray_icon_activated(self, reason):
         """
         Handle tray icon activation.
@@ -106,102 +114,79 @@ class OmifiSystemTray(QSystemTrayIcon):
             reason: Activation reason
         """
         if reason == QSystemTrayIcon.DoubleClick:
+            # Open dashboard on double-click
             self.open_dashboard()
     
     def open_dashboard(self):
         """Open the dashboard window."""
         if self.dashboard is None:
+            # Create dashboard if it doesn't exist
             self.dashboard = OmifiDashboard(
-                self.storage, 
-                self.clipboard_manager, 
+                self.storage,
+                self.clipboard_manager,
                 self.screenshot_manager,
-                self.tts
+                self.text_to_speech
             )
-            self.dashboard.setWindowIcon(QIcon(get_icon_path("omifi_icon.svg")))
-            self.dashboard.show()
             
-            # Connect the close event
+            # Connect close event to handler
             self.dashboard.closeEvent = self.on_dashboard_closed
-        else:
-            self.dashboard.activateWindow()
-            self.dashboard.raise_()
+        
+        # Show dashboard
+        self.dashboard.show()
+        self.dashboard.activateWindow()
     
     def on_dashboard_closed(self, event):
         """Handle dashboard close event."""
+        # Set dashboard to None when closed
         self.dashboard = None
         event.accept()
     
     def toggle_voice_recognition(self):
         """Toggle voice recognition on/off."""
         if self.voice_recognizer.paused:
+            # Resume voice recognition
             self.voice_recognizer.resume()
-            self.toggle_voice_action.setText("Pause Voice Recognition")
-            self.showMessage(
-                "OMIFI Voice Assistant", 
-                "Voice recognition resumed", 
-                QSystemTrayIcon.Information, 
-                2000
-            )
+            self.voice_toggle_action.setText("Pause Voice Recognition")
+            self.text_to_speech.speak("Voice recognition resumed", block=False)
         else:
+            # Pause voice recognition
             self.voice_recognizer.pause()
-            self.toggle_voice_action.setText("Resume Voice Recognition")
-            self.showMessage(
-                "OMIFI Voice Assistant", 
-                "Voice recognition paused", 
-                QSystemTrayIcon.Information, 
-                2000
-            )
+            self.voice_toggle_action.setText("Resume Voice Recognition")
+            self.text_to_speech.speak("Voice recognition paused", block=False)
     
     def take_screenshot(self):
         """Take a screenshot from the tray menu."""
-        filepath = self.screenshot_manager.take_screenshot()
-        
-        if filepath:
-            self.showMessage(
-                "OMIFI Voice Assistant", 
-                "Screenshot taken and saved", 
-                QSystemTrayIcon.Information, 
-                2000
-            )
+        # Take screenshot in a thread to avoid blocking the UI
+        def take_screenshot_thread():
+            filepath = self.screenshot_manager.take_screenshot()
             
-            # Update dashboard if open
-            if self.dashboard:
-                self.dashboard.refresh_screenshots()
-        else:
-            self.showMessage(
-                "OMIFI Voice Assistant", 
-                "Failed to take screenshot", 
-                QSystemTrayIcon.Warning, 
-                2000
-            )
+            if filepath:
+                self.text_to_speech.speak("Screenshot saved", block=False)
+            else:
+                self.text_to_speech.speak("Failed to take screenshot", block=False)
+        
+        threading.Thread(target=take_screenshot_thread).start()
     
     def sense_clipboard(self):
         """Sense clipboard from the tray menu."""
-        content_type, content = self.clipboard_manager.sense_clipboard()
-        
-        if content:
-            self.showMessage(
-                "OMIFI Voice Assistant", 
-                "Clipboard content saved", 
-                QSystemTrayIcon.Information, 
-                2000
-            )
+        # Sense clipboard in a thread to avoid blocking the UI
+        def sense_clipboard_thread():
+            content_type, content = self.clipboard_manager.sense_clipboard()
             
-            # Update dashboard if open
-            if self.dashboard:
-                self.dashboard.refresh_clipboard()
-        else:
-            self.showMessage(
-                "OMIFI Voice Assistant", 
-                "No clipboard content detected", 
-                QSystemTrayIcon.Information, 
-                2000
-            )
+            if content:
+                self.text_to_speech.speak("Clipboard content saved", block=False)
+            else:
+                self.text_to_speech.speak("No clipboard content found or unchanged", block=False)
+        
+        threading.Thread(target=sense_clipboard_thread).start()
     
     def quit_application(self):
         """Quit the application."""
-        # Stop the voice recognition thread
+        # Stop voice recognition
         self.voice_recognizer.stop()
         
-        # Quit the application
-        self.app.quit()
+        # Hide the tray icon
+        self.hide()
+        
+        # Exit application after a short delay
+        QApplication.quit()

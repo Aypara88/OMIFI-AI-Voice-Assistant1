@@ -1,8 +1,12 @@
+"""
+Screenshot module for the OMIFI assistant.
+"""
+
 import os
+import time
 import logging
-from datetime import datetime
+import subprocess
 from PIL import ImageGrab
-import platform
 
 logger = logging.getLogger(__name__)
 
@@ -28,19 +32,18 @@ class ScreenshotManager:
             str: Path to the saved screenshot
         """
         try:
-            logger.info("Taking screenshot...")
-            
-            # Generate a filename with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"screenshot_{timestamp}.png"
-            
-            # Take the screenshot using PIL
+            # Capture screenshot using PIL
             screenshot = ImageGrab.grab()
             
-            # Save the screenshot using the storage manager
+            # Save to storage
+            timestamp = int(time.time())
+            filename = f"screenshot_{timestamp}.png"
+            
             filepath = self.storage.save_screenshot(screenshot, filename)
             
-            logger.info(f"Screenshot saved: {filepath}")
+            if filepath:
+                logger.info(f"Screenshot saved to {filepath}")
+                
             return filepath
             
         except Exception as e:
@@ -54,25 +57,22 @@ class ScreenshotManager:
         Returns:
             bool: True if successful, False otherwise
         """
+        filepath = self.storage.get_last_screenshot()
+        
+        if not filepath or not os.path.exists(filepath):
+            logger.warning("No screenshot available to open")
+            return False
+        
         try:
-            last_screenshot = self.storage.get_last_screenshot()
+            # Try to open with system default viewer
+            if os.name == 'nt':  # Windows
+                os.startfile(filepath)
+            elif os.name == 'posix':  # Linux, macOS
+                subprocess.Popen(['xdg-open', filepath])
             
-            if not last_screenshot:
-                logger.info("No screenshots available")
-                return False
-            
-            # Open the file with the default application
-            logger.info(f"Opening screenshot: {last_screenshot}")
-            
-            if platform.system() == 'Windows':
-                os.startfile(last_screenshot)
-            elif platform.system() == 'Darwin':  # macOS
-                os.system(f'open "{last_screenshot}"')
-            else:  # Linux
-                os.system(f'xdg-open "{last_screenshot}"')
-                
+            logger.info(f"Opened screenshot: {filepath}")
             return True
             
         except Exception as e:
-            logger.error(f"Error opening last screenshot: {e}")
+            logger.error(f"Error opening screenshot: {e}")
             return False
